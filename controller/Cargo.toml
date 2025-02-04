@@ -1,0 +1,9 @@
+[package]
+name = "controller"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+linux-input = "0.1.0"
+nix = "0.29.0"
+ratatui = "0.29.0"
