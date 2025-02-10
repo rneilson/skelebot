@@ -1,7 +1,7 @@
 use std::thread;
-// use std::sync::mpsc;
+use std::sync::mpsc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 mod actions;
 mod joystick;
@@ -9,25 +9,58 @@ mod radio;
 mod term;
 mod ui;
 
+use actions::Action;
+
 fn main() {
     let exit_flag = AtomicBool::new(false);
-    // TODO: create channel
+    let (tx, rx) = mpsc::channel::<Action>();
+    let mut err_msg: Option<String> = None;
 
     println!("Starting up...");
+    let exit_at = Instant::now() + Duration::from_secs(5);
 
     thread::scope(|s| {
-        s.spawn(|| {joystick::collect_joystick_events(&exit_flag);});
-        s.spawn(|| {radio::radio_comms(&exit_flag);});
-        s.spawn(|| {term::collect_terminal_events(&exit_flag);});
-        s.spawn(|| {ui::draw_ui(&exit_flag);});
+        s.spawn(|| {joystick::collect_joystick_events(tx.clone(), &exit_flag);});
+        s.spawn(|| {radio::radio_comms(tx.clone(), &exit_flag);});
+        s.spawn(|| {term::collect_terminal_events(tx.clone(), &exit_flag);});
+        s.spawn(|| {ui::draw_ui(tx.clone(), &exit_flag);});
 
-        // TODO: loop over channel rx
-
-        // Placeholder
-        thread::sleep(Duration::from_secs(5));
-
-        exit_flag.store(true, Ordering::Relaxed);
+        // Loop over channel rx and process events
+        // TEMP: until quittin' time
+        let max_wait = Duration::from_millis(20);
+        'listener: loop {
+            match rx.recv_timeout(max_wait) {
+                Ok(action) => {
+                    match action {
+                        Action::Message(msg) => {
+                            println!("{0}", msg);
+                        },
+                        Action::Error(err) => {
+                            eprintln!("Error: {0}", err);
+                        },
+                    }
+                },
+                Err(mpsc::RecvTimeoutError::Timeout) => {
+                    // If we've timed out after signalling exit, just break
+                    if exit_flag.load(Ordering::Relaxed) {
+                        break 'listener;
+                    }
+                },
+                Err(e) => {
+                    err_msg = Some(format!("Couldn't receive action: {0}", e));
+                    exit_flag.store(true, Ordering::Relaxed);
+                    break 'listener;
+                },
+            }
+            if Instant::now() >= exit_at {
+                exit_flag.store(true, Ordering::Relaxed);
+            }
+        }
     });
+
+    if let Some(msg) = err_msg {
+        eprintln!("Error: {0}", msg);
+    }
 
     println!("Shutting down...");
 }
