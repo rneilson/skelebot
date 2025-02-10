@@ -1,6 +1,6 @@
 use std::thread;
 use std::sync::mpsc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::time::{Duration, Instant};
 
 mod actions;
@@ -14,12 +14,15 @@ use actions::Action;
 fn main() {
     let exit_flag = AtomicBool::new(false);
     let mut err_msg: Option<String> = None;
+
     let (tx, rx) = mpsc::channel::<Action>();
     let j_tx = tx.clone();
     let r_tx = tx.clone();
     let t_tx = tx.clone();
     let u_tx = tx.clone();
     drop(tx);
+
+    // let control_state = AtomicU32::new(0);
 
     println!("Starting up...");
     let exit_at = Instant::now() + Duration::from_secs(5);
@@ -38,13 +41,13 @@ fn main() {
                 Ok(action) => {
                     match action {
                         Action::Message(msg) => {
-                            println!("{0}", msg);
+                            println!("{0}: {1}", msg.name, msg.message);
                         },
                         Action::Error(err) => {
-                            eprintln!("Error: {0}", err);
+                            eprintln!("Error from {0}: {1}", err.name, err.message);
                         },
                         Action::Fatal(err) => {
-                            err_msg = Some(format!("Fatal error: {0}", err));
+                            err_msg = Some(format!("Fatal error from {0}: {1}", err.name, err.message));
                             exit_flag.store(true, Ordering::Relaxed);
                         },
                     }
