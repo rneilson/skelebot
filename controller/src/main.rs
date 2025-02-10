@@ -13,17 +13,22 @@ use actions::Action;
 
 fn main() {
     let exit_flag = AtomicBool::new(false);
-    let (tx, rx) = mpsc::channel::<Action>();
     let mut err_msg: Option<String> = None;
+    let (tx, rx) = mpsc::channel::<Action>();
+    let j_tx = tx.clone();
+    let r_tx = tx.clone();
+    let t_tx = tx.clone();
+    let u_tx = tx.clone();
+    drop(tx);
 
     println!("Starting up...");
     let exit_at = Instant::now() + Duration::from_secs(5);
 
     thread::scope(|s| {
-        s.spawn(|| {joystick::collect_joystick_events(tx.clone(), &exit_flag);});
-        s.spawn(|| {radio::radio_comms(tx.clone(), &exit_flag);});
-        s.spawn(|| {term::collect_terminal_events(tx.clone(), &exit_flag);});
-        s.spawn(|| {ui::draw_ui(tx.clone(), &exit_flag);});
+        s.spawn(|| {joystick::collect_joystick_events(j_tx, &exit_flag);});
+        s.spawn(|| {radio::radio_comms(r_tx, &exit_flag);});
+        s.spawn(|| {term::collect_terminal_events(t_tx, &exit_flag);});
+        s.spawn(|| {ui::draw_ui(u_tx, &exit_flag);});
 
         // Loop over channel rx and process events
         // TEMP: until quittin' time
@@ -38,6 +43,10 @@ fn main() {
                         Action::Error(err) => {
                             eprintln!("Error: {0}", err);
                         },
+                        Action::Fatal(err) => {
+                            err_msg = Some(format!("Fatal error: {0}", err));
+                            exit_flag.store(true, Ordering::Relaxed);
+                        },
                     }
                 },
                 Err(mpsc::RecvTimeoutError::Timeout) => {
@@ -46,9 +55,8 @@ fn main() {
                         break 'listener;
                     }
                 },
-                Err(e) => {
-                    err_msg = Some(format!("Couldn't receive action: {0}", e));
-                    exit_flag.store(true, Ordering::Relaxed);
+                Err(mpsc::RecvTimeoutError::Disconnected) => {
+                    // Disconnected implies all senders dropped
                     break 'listener;
                 },
             }
@@ -59,7 +67,7 @@ fn main() {
     });
 
     if let Some(msg) = err_msg {
-        eprintln!("Error: {0}", msg);
+        eprintln!("{0}", msg);
     }
 
     println!("Shutting down...");

@@ -4,6 +4,7 @@ use std::time::Instant;
 pub enum Action {
     Message(String),
     Error(String),
+    Fatal(String),
 }
 
 pub fn record_ticks_for_period(tx: &Sender<Action>, name: &str, ticks: u32, prev_time: Instant, curr_time: Instant) {
