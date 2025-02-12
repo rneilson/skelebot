@@ -1,18 +1,39 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::Sender;
 use std::time::{Duration, Instant};
-use std::thread::sleep;
 
-use crate::actions::{Action, record_ticks_for_period};
+use crossterm::event::{poll, read, Event};
+
+use crate::actions::{record_ticks_for_period, send_error_message, Action};
 
 pub fn collect_terminal_events(tx: Sender<Action>, exit_flag: &AtomicBool) {
     let mut prev_marker = Instant::now();
-    let mut next_marker = prev_marker + Duration::from_secs(1);
+    let mut next_marker = prev_marker + Duration::from_secs(10);
     let mut ticks = 0_u32;
 
     'outer: loop {
-        // TODO: actual work
-        sleep(Duration::from_millis(20));
+        match poll(Duration::from_millis(20)) {
+            Ok(available) => {
+                if available {
+                    match read() {
+                        Ok(event) => {
+                            if let Event::Key(event) = event {
+                                tx.send(Action::KeyPress(event)).unwrap();
+                            }
+                        }
+                        Err(e) => {
+                            let msg = format!("{}", e);
+                            send_error_message(&tx, "Terminal", &msg);
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                let msg = format!("{}", e);
+                send_error_message(&tx, "Terminal", &msg);
+            }
+        }
+
         ticks += 1;
 
         let curr_time = Instant::now();
@@ -24,7 +45,7 @@ pub fn collect_terminal_events(tx: Sender<Action>, exit_flag: &AtomicBool) {
             ticks = 0;
             prev_marker = next_marker;
             while next_marker < curr_time {
-                next_marker += Duration::from_secs(1);
+                next_marker += Duration::from_secs(10);
             }
         }
 

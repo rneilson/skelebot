@@ -1,13 +1,13 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::Sender;
-use std::time::{Duration, Instant};
 use std::thread::sleep;
+use std::time::{Duration, Instant};
 
-use crate::actions::{Action, record_ticks_for_period};
+use crate::actions::{record_ticks_for_period, Action};
 
 pub fn radio_comms(tx: Sender<Action>, exit_flag: &AtomicBool) {
     let mut prev_marker = Instant::now();
-    let mut next_marker = prev_marker + Duration::from_secs(1);
+    let mut next_marker = prev_marker + Duration::from_secs(10);
     let mut ticks = 0_u32;
 
     'outer: loop {
@@ -24,7 +24,7 @@ pub fn radio_comms(tx: Sender<Action>, exit_flag: &AtomicBool) {
             ticks = 0;
             prev_marker = next_marker;
             while next_marker < curr_time {
-                next_marker += Duration::from_secs(1);
+                next_marker += Duration::from_secs(10);
             }
         }
 

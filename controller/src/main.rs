@@ -1,9 +1,13 @@
+#![allow(clippy::explicit_write)]
+
+use std::io::{self, Write};
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant};
 
 use crossterm::event::{KeyCode, KeyEvent};
+use crossterm::terminal;
 
 mod actions;
 mod joystick;
@@ -13,7 +17,10 @@ mod ui;
 
 use actions::{Action, ControlState, StickPosition};
 
-fn main() {
+fn main() -> io::Result<()> {
+    terminal::enable_raw_mode()?;
+    write!(io::stdout(), "Starting up...\r\n")?;
+
     let exit_flag = AtomicBool::new(false);
     let mut err_msg: Option<String> = None;
 
@@ -25,9 +32,7 @@ fn main() {
     drop(tx);
 
     let control_state_atomic = AtomicU32::new(0);
-
-    println!("Starting up...");
-    let exit_at = Instant::now() + Duration::from_secs(5);
+    let exit_at = Instant::now() + Duration::from_secs(30);
 
     thread::scope(|s| {
         s.spawn(|| {
@@ -51,10 +56,16 @@ fn main() {
                 Ok(action) => {
                     match action {
                         Action::Message(msg) => {
-                            println!("{0}: {1}", msg.name, msg.message);
+                            write!(io::stdout(), "{0}: {1}\r\n", msg.name, msg.message).unwrap();
                         }
                         Action::Error(err) => {
-                            eprintln!("Error from {0}: {1}", err.name, err.message);
+                            write!(
+                                io::stderr(),
+                                "Error from {0}: {1}\r\n",
+                                err.name,
+                                err.message
+                            )
+                            .unwrap();
                         }
                         Action::Fatal(err) => {
                             err_msg =
@@ -69,7 +80,8 @@ fn main() {
                                     control_state_atomic
                                         .store(control_state.as_u32(), Ordering::Relaxed);
                                     // TODO: send update message to UI thread
-                                    println!("Control state: {:?}", control_state);
+                                    write!(io::stdout(), "Control state: {:?}\r\n", control_state)
+                                        .unwrap();
                                 }
                                 None => {
                                     exit_flag.store(true, Ordering::Relaxed);
@@ -80,7 +92,7 @@ fn main() {
                             let control_state = handle_stick_position(stick_pos);
                             control_state_atomic.store(control_state.as_u32(), Ordering::Relaxed);
                             // TODO: send update message to UI thread
-                            println!("Control state: {:?}", control_state);
+                            write!(io::stdout(), "Control state: {:?}\r\n", control_state).unwrap();
                         }
                     }
                 }
@@ -102,10 +114,11 @@ fn main() {
     });
 
     if let Some(msg) = err_msg {
-        eprintln!("{0}", msg);
+        write!(io::stderr(), "{0}\r\n", msg)?;
     }
 
-    println!("Shutting down...");
+    write!(io::stdout(), "Shutting down...\r\n")?;
+    terminal::disable_raw_mode()
 }
 
 /// Returns a modified control state if arrow keys are pressed, or None if the quit
@@ -121,16 +134,20 @@ fn handle_keypress_event(
         }
         // Manipulate control state on arrow keys
         KeyCode::Up => {
-            control_state.throttle = control_state.throttle.saturating_add(8_192);
+            let step = if control_state.throttle <= (i16::MIN + 1) { 8_191 } else { 8_192 };
+            control_state.throttle = control_state.throttle.saturating_add(step);
         }
         KeyCode::Down => {
-            control_state.throttle = control_state.throttle.saturating_sub(8_192);
+            let step = if control_state.throttle == i16::MAX { 8_191 } else { 8_192 };
+            control_state.throttle = control_state.throttle.saturating_sub(step);
         }
         KeyCode::Right => {
-            control_state.steering = control_state.steering.saturating_add(8_192);
+            let step = if control_state.steering <= (i16::MIN + 1) { 8_191 } else { 8_192 };
+            control_state.steering = control_state.steering.saturating_add(step);
         }
         KeyCode::Left => {
-            control_state.steering = control_state.steering.saturating_sub(8_192);
+            let step = if control_state.steering == i16::MAX { 8_191 } else { 8_192 };
+            control_state.steering = control_state.steering.saturating_sub(step);
         }
         // Reset control state to center on spacebar
         KeyCode::Char(' ') => {

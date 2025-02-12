@@ -13,8 +13,8 @@ pub struct ControlState {
 
 impl ControlState {
     pub fn as_u32(&self) -> u32 {
-        let high = self.throttle as u32;
-        let low = self.steering as u32;
+        let high = (self.throttle as u16) as u32;
+        let low = (self.steering as u16) as u32;
         (high << 16) | low
     }
 
@@ -76,4 +76,12 @@ pub fn record_ticks_for_period(
         message: msg,
     };
     tx.send(Action::Message(msg)).unwrap();
+}
+
+pub fn send_error_message(tx: &Sender<Action>, name: &str, msg: &str) {
+    let msg = ThreadMsg {
+        name: name.to_owned(),
+        message: msg.to_owned(),
+    };
+    tx.send(Action::Error(msg)).unwrap();
 }
