@@ -2,9 +2,9 @@
 
 use std::io::{self, Write};
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
-use std::sync::mpsc;
+use std::sync::mpsc::{self, Receiver};
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use crossterm::event::{KeyCode, KeyEvent};
 use crossterm::terminal;
@@ -21,6 +21,7 @@ fn main() -> io::Result<()> {
     terminal::enable_raw_mode()?;
     write!(io::stdout(), "Starting up...\r\n")?;
 
+    let control_state_atomic = AtomicU32::new(0);
     let exit_flag = AtomicBool::new(false);
     let mut err_msg: Option<String> = None;
 
@@ -30,9 +31,6 @@ fn main() -> io::Result<()> {
     let t_tx = tx.clone();
     let u_tx = tx.clone();
     drop(tx);
-
-    let control_state_atomic = AtomicU32::new(0);
-    let exit_at = Instant::now() + Duration::from_secs(30);
 
     thread::scope(|s| {
         s.spawn(|| {
@@ -49,67 +47,10 @@ fn main() -> io::Result<()> {
         });
 
         // Loop over channel rx and process events
-        // TEMP: until quittin' time
-        let max_wait = Duration::from_millis(20);
-        'listener: loop {
-            match rx.recv_timeout(max_wait) {
-                Ok(action) => {
-                    match action {
-                        Action::Message(msg) => {
-                            write!(io::stdout(), "{0}: {1}\r\n", msg.name, msg.message).unwrap();
-                        }
-                        Action::Error(err) => {
-                            write!(
-                                io::stderr(),
-                                "Error from {0}: {1}\r\n",
-                                err.name,
-                                err.message
-                            )
-                            .unwrap();
-                        }
-                        Action::Fatal(err) => {
-                            err_msg =
-                                Some(format!("Fatal error from {0}: {1}", err.name, err.message));
-                            exit_flag.store(true, Ordering::Relaxed);
-                        }
-                        Action::KeyPress(key_event) => {
-                            let control_state =
-                                ControlState::from(control_state_atomic.load(Ordering::Relaxed));
-                            match handle_keypress_event(control_state, key_event) {
-                                Some(control_state) => {
-                                    control_state_atomic
-                                        .store(control_state.as_u32(), Ordering::Relaxed);
-                                    // TODO: send update message to UI thread
-                                    write!(io::stdout(), "Control state: {:?}\r\n", control_state)
-                                        .unwrap();
-                                }
-                                None => {
-                                    exit_flag.store(true, Ordering::Relaxed);
-                                }
-                            }
-                        }
-                        Action::StickUpdate(stick_pos) => {
-                            let control_state = handle_stick_position(stick_pos);
-                            control_state_atomic.store(control_state.as_u32(), Ordering::Relaxed);
-                            // TODO: send update message to UI thread
-                            write!(io::stdout(), "Control state: {:?}\r\n", control_state).unwrap();
-                        }
-                    }
-                }
-                Err(mpsc::RecvTimeoutError::Timeout) => {
-                    // If we've timed out after signalling exit, just break
-                    if exit_flag.load(Ordering::Relaxed) {
-                        break 'listener;
-                    }
-                }
-                Err(mpsc::RecvTimeoutError::Disconnected) => {
-                    // Disconnected implies all senders dropped
-                    break 'listener;
-                }
-            }
-            if Instant::now() >= exit_at {
-                exit_flag.store(true, Ordering::Relaxed);
-            }
+        // Set error message and exit flag on any error, then allow threads to end
+        if let Err(e) = handle_actions(rx, &exit_flag, &control_state_atomic) {
+            err_msg = Some(format!("{}", e));
+            exit_flag.store(true, Ordering::Relaxed);
         }
     });
 
@@ -119,6 +60,72 @@ fn main() -> io::Result<()> {
 
     write!(io::stdout(), "Shutting down...\r\n")?;
     terminal::disable_raw_mode()
+}
+
+fn handle_actions(
+    rx: Receiver<Action>,
+    exit_flag: &AtomicBool,
+    control_state_atomic: &AtomicU32,
+) -> io::Result<()> {
+    let max_wait = Duration::from_millis(20);
+    'listener: loop {
+        match rx.recv_timeout(max_wait) {
+            Ok(action) => {
+                match action {
+                    Action::Message(msg) => {
+                        write!(io::stdout(), "{0}: {1}\r\n", msg.name, msg.message)?;
+                    }
+                    Action::Error(err) => {
+                        write!(
+                            io::stderr(),
+                            "Error from {0}: {1}\r\n",
+                            err.name,
+                            err.message
+                        )?;
+                    }
+                    Action::Fatal(err) => {
+                        return Err(io::Error::new(
+                            io::ErrorKind::Other,
+                            format!("Fatal error from {0}: {1}", err.name, err.message),
+                        ));
+                    }
+                    Action::KeyPress(key_event) => {
+                        let control_state =
+                            ControlState::from(control_state_atomic.load(Ordering::Relaxed));
+                        match handle_keypress_event(control_state, key_event) {
+                            Some(control_state) => {
+                                control_state_atomic
+                                    .store(control_state.as_u32(), Ordering::Relaxed);
+                                // TODO: send update message to UI thread
+                                write!(io::stdout(), "Control state: {:?}\r\n", control_state)?;
+                            }
+                            None => {
+                                exit_flag.store(true, Ordering::Relaxed);
+                            }
+                        }
+                    }
+                    Action::StickUpdate(stick_pos) => {
+                        let control_state = handle_stick_position(stick_pos);
+                        control_state_atomic.store(control_state.as_u32(), Ordering::Relaxed);
+                        // TODO: send update message to UI thread
+                        write!(io::stdout(), "Control state: {:?}\r\n", control_state)?;
+                    }
+                }
+            }
+            Err(mpsc::RecvTimeoutError::Timeout) => {
+                // If we've timed out after signalling exit, just break
+                if exit_flag.load(Ordering::Relaxed) {
+                    break 'listener;
+                }
+            }
+            Err(mpsc::RecvTimeoutError::Disconnected) => {
+                // Disconnected implies all senders dropped
+                break 'listener;
+            }
+        }
+    }
+
+    Ok(())
 }
 
 /// Returns a modified control state if arrow keys are pressed, or None if the quit
@@ -134,19 +141,31 @@ fn handle_keypress_event(
         }
         // Manipulate control state on arrow keys
         KeyCode::Up => {
-            let step = if control_state.throttle <= (i16::MIN + 1) { 8_191 } else { 8_192 };
+            let mut step = 8_192;
+            if control_state.throttle <= (i16::MIN + 1) {
+                step = 8_191;
+            }
             control_state.throttle = control_state.throttle.saturating_add(step);
         }
         KeyCode::Down => {
-            let step = if control_state.throttle == i16::MAX { 8_191 } else { 8_192 };
+            let mut step = 8_192;
+            if control_state.throttle == i16::MAX {
+                step = 8_191;
+            }
             control_state.throttle = control_state.throttle.saturating_sub(step);
         }
         KeyCode::Right => {
-            let step = if control_state.steering <= (i16::MIN + 1) { 8_191 } else { 8_192 };
+            let mut step = 8_192;
+            if control_state.steering <= (i16::MIN + 1) {
+                step = 8_191;
+            }
             control_state.steering = control_state.steering.saturating_add(step);
         }
         KeyCode::Left => {
-            let step = if control_state.steering == i16::MAX { 8_191 } else { 8_192 };
+            let mut step = 8_192;
+            if control_state.steering == i16::MAX {
+                step = 8_191;
+            }
             control_state.steering = control_state.steering.saturating_sub(step);
         }
         // Reset control state to center on spacebar
