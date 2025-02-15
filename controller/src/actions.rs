@@ -18,13 +18,14 @@ impl ControlState {
         (high << 16) | low
     }
 
-    pub fn trim(&mut self) {
+    pub fn trim(&mut self) -> &Self {
         if self.throttle == i16::MIN {
             self.throttle += 1;
         }
         if self.steering == i16::MIN {
             self.steering += 1;
         }
+        self
     }
 }
 

@@ -1,8 +1,9 @@
 #![allow(clippy::explicit_write)]
 
+use std::error::Error;
 use std::io::{self, Write};
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
-use std::sync::mpsc::{self, Receiver};
+use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread;
 use std::time::Duration;
 
@@ -16,6 +17,7 @@ mod term;
 mod ui;
 
 use actions::{Action, ControlState, StickPosition};
+use ui::UIUpdate;
 
 fn main() -> io::Result<()> {
     terminal::enable_raw_mode()?;
@@ -32,6 +34,8 @@ fn main() -> io::Result<()> {
     let u_tx = tx.clone();
     drop(tx);
 
+    let (ui_tx, ui_rx) = mpsc::channel::<UIUpdate>();
+
     thread::scope(|s| {
         s.spawn(|| {
             joystick::collect_joystick_events(j_tx, &exit_flag);
@@ -43,12 +47,12 @@ fn main() -> io::Result<()> {
             term::collect_terminal_events(t_tx, &exit_flag);
         });
         s.spawn(|| {
-            ui::draw_ui(u_tx, &exit_flag);
+            ui::draw_ui(ui_rx, u_tx, &exit_flag);
         });
 
         // Loop over channel rx and process events
         // Set error message and exit flag on any error, then allow threads to end
-        if let Err(e) = handle_actions(rx, &exit_flag, &control_state_atomic) {
+        if let Err(e) = handle_actions(rx, ui_tx, &exit_flag, &control_state_atomic) {
             err_msg = Some(format!("{}", e));
             exit_flag.store(true, Ordering::Relaxed);
         }
@@ -64,30 +68,32 @@ fn main() -> io::Result<()> {
 
 fn handle_actions(
     rx: Receiver<Action>,
+    ui_tx: Sender<UIUpdate>,
     exit_flag: &AtomicBool,
     control_state_atomic: &AtomicU32,
-) -> io::Result<()> {
+) -> Result<(), Box<dyn Error>> {
     let max_wait = Duration::from_millis(20);
     'listener: loop {
         match rx.recv_timeout(max_wait) {
             Ok(action) => {
                 match action {
                     Action::Message(msg) => {
-                        write!(io::stdout(), "{0}: {1}\r\n", msg.name, msg.message)?;
+                        ui_tx.send(UIUpdate::Message(msg))?;
+                        // write!(io::stdout(), "{0}: {1}\r\n", msg.name, msg.message)?;
                     }
                     Action::Error(err) => {
-                        write!(
-                            io::stderr(),
-                            "Error from {0}: {1}\r\n",
-                            err.name,
-                            err.message
-                        )?;
+                        ui_tx.send(UIUpdate::Error(err))?;
+                        // write!(
+                        //     io::stderr(),
+                        //     "Error from {0}: {1}\r\n",
+                        //     err.name,
+                        //     err.message
+                        // )?;
                     }
                     Action::Fatal(err) => {
-                        return Err(io::Error::new(
-                            io::ErrorKind::Other,
-                            format!("Fatal error from {0}: {1}", err.name, err.message),
-                        ));
+                        return Err(
+                            format!("Fatal error from {0}: {1}", err.name, err.message).into()
+                        );
                     }
                     Action::KeyPress(key_event) => {
                         let control_state =
@@ -96,8 +102,8 @@ fn handle_actions(
                             Some(control_state) => {
                                 control_state_atomic
                                     .store(control_state.as_u32(), Ordering::Relaxed);
-                                // TODO: send update message to UI thread
-                                write!(io::stdout(), "Control state: {:?}\r\n", control_state)?;
+                                ui_tx.send(UIUpdate::Control(control_state))?;
+                                // write!(io::stdout(), "Control state: {:?}\r\n", control_state)?;
                             }
                             None => {
                                 exit_flag.store(true, Ordering::Relaxed);
@@ -107,8 +113,8 @@ fn handle_actions(
                     Action::StickUpdate(stick_pos) => {
                         let control_state = handle_stick_position(stick_pos);
                         control_state_atomic.store(control_state.as_u32(), Ordering::Relaxed);
-                        // TODO: send update message to UI thread
-                        write!(io::stdout(), "Control state: {:?}\r\n", control_state)?;
+                        ui_tx.send(UIUpdate::Control(control_state))?;
+                        // write!(io::stdout(), "Control state: {:?}\r\n", control_state)?;
                     }
                 }
             }
