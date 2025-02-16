@@ -1,9 +1,11 @@
 #![allow(dead_code)]
 
 use std::sync::mpsc::Sender;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use crossterm::event::KeyEvent;
+
+pub const RECORD_TICKS_INTERVAL: Duration = Duration::from_secs(2);
 
 #[derive(Debug)]
 pub struct ControlState {
@@ -18,7 +20,7 @@ impl ControlState {
         (high << 16) | low
     }
 
-    pub fn trim(&mut self) -> &Self {
+    pub fn trim(mut self) -> Self {
         if self.throttle == i16::MIN {
             self.throttle += 1;
         }

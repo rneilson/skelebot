@@ -182,8 +182,7 @@ fn handle_keypress_event(
         // Ignore others
         _ => {}
     }
-    control_state.trim();
-    Some(control_state)
+    Some(control_state.trim())
 }
 
 /// Converts a joystick position to a new control state
@@ -191,10 +190,9 @@ fn handle_stick_position(stick_pos: StickPosition) -> ControlState {
     // Convert stick position to control state
     // At present this is a simple mapping of Y axis to throttle
     // and X axis to steering
-    let mut control_state = ControlState {
+    let control_state = ControlState {
         throttle: stick_pos.y,
         steering: stick_pos.x,
     };
-    control_state.trim();
-    control_state
+    control_state.trim()
 }

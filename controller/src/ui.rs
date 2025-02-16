@@ -11,7 +11,9 @@ use ratatui::widgets::{
     Axis, Bar, BarChart, BarGroup, Block, Chart, Dataset, GraphType, Paragraph, Wrap,
 };
 
-use crate::actions::{record_ticks_for_period, Action, ControlState, ThreadMsg};
+use crate::actions::{
+    record_ticks_for_period, Action, ControlState, ThreadMsg, RECORD_TICKS_INTERVAL,
+};
 
 const MESSAGE_LINES: u16 = 5;
 
@@ -23,7 +25,7 @@ pub enum UIUpdate {
 
 pub fn draw_ui(rx: Receiver<UIUpdate>, tx: Sender<Action>, exit_flag: &AtomicBool) {
     let mut prev_marker = Instant::now();
-    let mut next_marker = prev_marker + Duration::from_secs(10);
+    let mut next_marker = prev_marker + RECORD_TICKS_INTERVAL;
     let mut ticks = 0_u32;
 
     let mut control_state = ControlState::from(0);
@@ -33,29 +35,17 @@ pub fn draw_ui(rx: Receiver<UIUpdate>, tx: Sender<Action>, exit_flag: &AtomicBoo
     let mut terminal = match Terminal::new(backend) {
         Ok(terminal) => terminal,
         Err(e) => {
-            let msg = ThreadMsg {
-                name: "UI".to_owned(),
-                message: format!("couldn't initialize terminal: {:?}", e),
-            };
-            tx.send(Action::Fatal(msg)).unwrap();
+            send_io_error(tx, e, "couldn't initialize terminal");
             return;
         }
     };
 
     if let Err(e) = stdout().execute(EnterAlternateScreen) {
-        let msg = ThreadMsg {
-            name: "UI".to_owned(),
-            message: format!("couldn't initialize terminal: {:?}", e),
-        };
-        tx.send(Action::Fatal(msg)).unwrap();
+        send_io_error(tx, e, "couldn't initialize terminal");
         return;
     }
     if let Err(e) = terminal.draw(|frame| render_ui(frame, &control_state, &messages)) {
-        let msg = ThreadMsg {
-            name: "UI".to_owned(),
-            message: format!("couldn't draw frame: {:?}", e),
-        };
-        tx.send(Action::Fatal(msg)).unwrap();
+        send_io_error(tx, e, "couldn't draw frame");
         return;
     }
 
@@ -115,7 +105,7 @@ pub fn draw_ui(rx: Receiver<UIUpdate>, tx: Sender<Action>, exit_flag: &AtomicBoo
             ticks = 0;
             prev_marker = next_marker;
             while next_marker < curr_time {
-                next_marker += Duration::from_secs(10);
+                next_marker += RECORD_TICKS_INTERVAL;
             }
         }
 
@@ -137,42 +127,84 @@ fn render_ui(frame: &mut Frame, control_state: &ControlState, messages: &VecDequ
         .split(frame.area());
     let upper_layout = Layout::default()
         .direction(Direction::Horizontal)
-        .constraints(vec![Constraint::Min(11), Constraint::Length(5)])
+        .constraints(vec![
+            Constraint::Length(14),
+            Constraint::Min(11),
+            Constraint::Length(14),
+        ])
         .split(outer_layout[0]);
     let lower_layout = outer_layout[1];
     let upper_left = upper_layout[0];
-    let upper_right = upper_layout[1];
+    let upper_mid = upper_layout[1];
+    let upper_right = upper_layout[2];
+
+    // Summary values
+    // TODO: battery
+    // TODO: left RPM
+    // TODO: right RPM
+    let sum_data = vec![
+        Line::from("Throttle"),
+        Line::from(control_state.throttle.to_string()),
+        Line::from(""),
+        Line::from("Steering"),
+        Line::from(control_state.steering.to_string()),
+        Line::from(""),
+        Line::from("Left %"),
+        Line::from("0%"), // TODO: calc from controlstate
+        Line::from(""),
+        Line::from("Right %"),
+        Line::from("0%"), // TODO: calc from controlstate
+    ];
+    let sum_para = Paragraph::new(sum_data)
+        .block(Block::bordered())
+        .style(Style::new().white().on_black())
+        .left_aligned()
+        .wrap(Wrap { trim: true });
 
     // Joystick position
-    let positions = [(control_state.steering.into(), control_state.throttle.into())];
+    let positions = [
+        (0.0, 0.0),
+        (control_state.steering.into(), control_state.throttle.into()),
+    ];
     let labels = [Line::from("-32767"), Line::from("0"), Line::from("32767")];
-    let ul_data = vec![Dataset::default()
+    let um_data = vec![Dataset::default()
         .marker(symbols::Marker::Dot)
-        .graph_type(GraphType::Scatter)
-        .style(Style::default().cyan())
+        .graph_type(GraphType::Line)
+        .style(Style::default().cyan().bold())
         .data(&positions)];
-    let ul_x_axis = Axis::default()
+    let um_x_axis = Axis::default()
         .style(Style::default().white())
         .bounds([(i16::MIN + 1).into(), i16::MAX.into()])
         .labels(labels.clone());
-    let ul_y_axis = Axis::default()
+    let um_y_axis = Axis::default()
         .style(Style::default().white())
         .bounds([(i16::MIN + 1).into(), i16::MAX.into()])
         .labels(labels.clone());
-    let ul_chart = Chart::new(ul_data)
+    let um_chart = Chart::new(um_data)
         .block(Block::bordered())
-        .x_axis(ul_x_axis)
-        .y_axis(ul_y_axis);
+        .x_axis(um_x_axis)
+        .y_axis(um_y_axis);
 
     // Tank drive
     // TODO: extract from joystick position
-    let ur_data = &[Bar::default().value(100), Bar::default().value(100)];
+    let ur_data = &[
+        Bar::default()
+            .value(100)
+            .label("L".into())
+            .style(Style::default().green())
+            .value_style(Style::default().black().on_green()),
+        Bar::default()
+            .value(100)
+            .label("R".into())
+            .style(Style::default().green())
+            .value_style(Style::default().black().on_green()),
+    ];
     // TODO: style according to values
     let ur_chart = BarChart::default()
         .block(Block::bordered())
-        .bar_width(1)
-        .bar_gap(1)
-        .bar_style(Style::default().green())
+        .bar_width(5)
+        .bar_gap(2)
+        .value_style(Style::new().black().on_black())
         .data(BarGroup::default().bars(ur_data))
         .max(200);
 
@@ -184,7 +216,16 @@ fn render_ui(frame: &mut Frame, control_state: &ControlState, messages: &VecDequ
         .left_aligned()
         .wrap(Wrap { trim: true });
 
-    frame.render_widget(ul_chart, upper_left);
+    frame.render_widget(sum_para, upper_left);
+    frame.render_widget(um_chart, upper_mid);
     frame.render_widget(ur_chart, upper_right);
     frame.render_widget(msg_para, lower_layout);
+}
+
+fn send_io_error(tx: Sender<Action>, err: std::io::Error, err_desc: &str) {
+    let msg = ThreadMsg {
+        name: "UI".to_owned(),
+        message: format!("{}: {:?}", err_desc, err),
+    };
+    tx.send(Action::Fatal(msg)).unwrap();
 }

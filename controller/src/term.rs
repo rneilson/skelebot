@@ -4,11 +4,11 @@ use std::time::{Duration, Instant};
 
 use crossterm::event::{poll, read, Event};
 
-use crate::actions::{record_ticks_for_period, send_error_message, Action};
+use crate::actions::{record_ticks_for_period, send_error_message, Action, RECORD_TICKS_INTERVAL};
 
 pub fn collect_terminal_events(tx: Sender<Action>, exit_flag: &AtomicBool) {
     let mut prev_marker = Instant::now();
-    let mut next_marker = prev_marker + Duration::from_secs(10);
+    let mut next_marker = prev_marker + RECORD_TICKS_INTERVAL;
     let mut ticks = 0_u32;
 
     'outer: loop {
@@ -45,7 +45,7 @@ pub fn collect_terminal_events(tx: Sender<Action>, exit_flag: &AtomicBool) {
             ticks = 0;
             prev_marker = next_marker;
             while next_marker < curr_time {
-                next_marker += Duration::from_secs(10);
+                next_marker += RECORD_TICKS_INTERVAL;
             }
         }
 
