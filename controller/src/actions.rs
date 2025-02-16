@@ -1,5 +1,6 @@
 #![allow(dead_code)]
 
+use std::i16;
 use std::sync::mpsc::Sender;
 use std::time::{Duration, Instant};
 
@@ -28,6 +29,23 @@ impl ControlState {
             self.steering += 1;
         }
         self
+    }
+
+    // Convert throttle and steering values to left/right tank-drive values,
+    // as expressed in +/- %
+    // Logic from https://ewpratten.com/blog/joystick-to-voltage
+    pub fn as_tank_drive(&self) -> (i8, i8) {
+        let t = (self.throttle as f64) / (i16::MAX as f64);
+        let s = (self.steering as f64) / (i16::MAX as f64);
+
+        let left = ((t + (t.abs() * s)) + (t + s)) / 2.0;
+        let right = ((t - (t.abs() * s)) + (t - s)) / 2.0;
+        let m = f64::max(left.abs(), right.abs()).max(1.0);
+
+        let left = (100.0 * left / m).clamp(-100.0, 100.0) as i8;
+        let right = (100.0 * right / m).clamp(-100.0, 100.0) as i8;
+
+        (left, right)
     }
 }
 

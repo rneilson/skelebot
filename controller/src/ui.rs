@@ -1,11 +1,12 @@
 use std::collections::VecDeque;
 use std::io::stdout;
+use std::panic::{set_hook, take_hook};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::time::{Duration, Instant};
 
+use crossterm::terminal::{disable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen};
 use crossterm::ExecutableCommand;
-use ratatui::crossterm::terminal::{EnterAlternateScreen, LeaveAlternateScreen};
 use ratatui::prelude::*;
 use ratatui::widgets::{
     Axis, Bar, BarChart, BarGroup, Block, Chart, Dataset, GraphType, Paragraph, Wrap,
@@ -40,15 +41,26 @@ pub fn draw_ui(rx: Receiver<UIUpdate>, tx: Sender<Action>, exit_flag: &AtomicBoo
         }
     };
 
+    // Switch to alternate buffer and setup panic handler
     if let Err(e) = stdout().execute(EnterAlternateScreen) {
         send_io_error(tx, e, "couldn't initialize terminal");
         return;
     }
+    let original_hook = take_hook();
+    set_hook(Box::new(move |panic_info| {
+        // intentionally ignore errors here since we're already in a panic
+        let _ = stdout().execute(LeaveAlternateScreen);
+        let _ = disable_raw_mode();
+        original_hook(panic_info);
+    }));
+
+    // Draw initial frame
     if let Err(e) = terminal.draw(|frame| render_ui(frame, &control_state, &messages)) {
         send_io_error(tx, e, "couldn't draw frame");
         return;
     }
 
+    // Update as messages come in
     let max_wait = Duration::from_millis(20);
     'listener: loop {
         match rx.recv_timeout(max_wait) {
@@ -73,16 +85,9 @@ pub fn draw_ui(rx: Receiver<UIUpdate>, tx: Sender<Action>, exit_flag: &AtomicBoo
                         }
                     }
                 }
-                match terminal.draw(|frame| render_ui(frame, &control_state, &messages)) {
-                    Ok(_) => {}
-                    Err(e) => {
-                        let msg = ThreadMsg {
-                            name: "UI".to_owned(),
-                            message: format!("couldn't draw frame: {:?}", e),
-                        };
-                        tx.send(Action::Fatal(msg)).unwrap();
-                        return;
-                    }
+                if let Err(e) = terminal.draw(|frame| render_ui(frame, &control_state, &messages)) {
+                    send_io_error(tx, e, "couldn't draw frame");
+                    return;
                 }
             }
             Err(mpsc::RecvTimeoutError::Timeout) => {
@@ -114,10 +119,13 @@ pub fn draw_ui(rx: Receiver<UIUpdate>, tx: Sender<Action>, exit_flag: &AtomicBoo
         }
     }
 
-    stdout().execute(LeaveAlternateScreen).unwrap();
+    let _ = stdout().execute(LeaveAlternateScreen);
 }
 
 fn render_ui(frame: &mut Frame, control_state: &ControlState, messages: &VecDeque<String>) {
+    // Extracted from joystick position
+    let (left_val, right_val) = control_state.as_tank_drive();
+
     let outer_layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints(vec![
@@ -149,11 +157,11 @@ fn render_ui(frame: &mut Frame, control_state: &ControlState, messages: &VecDequ
         Line::from("Steering"),
         Line::from(control_state.steering.to_string()),
         Line::from(""),
-        Line::from("Left %"),
-        Line::from("0%"), // TODO: calc from controlstate
+        Line::from("Left"),
+        Line::from(format!("{}%", left_val)).style(tank_drive_style(left_val)),
         Line::from(""),
-        Line::from("Right %"),
-        Line::from("0%"), // TODO: calc from controlstate
+        Line::from("Right"),
+        Line::from(format!("{}%", right_val)).style(tank_drive_style(right_val)),
     ];
     let sum_para = Paragraph::new(sum_data)
         .block(Block::bordered())
@@ -186,18 +194,17 @@ fn render_ui(frame: &mut Frame, control_state: &ControlState, messages: &VecDequ
         .y_axis(um_y_axis);
 
     // Tank drive
-    // TODO: extract from joystick position
     let ur_data = &[
         Bar::default()
-            .value(100)
+            .value(((left_val as i16) + 100) as u64)
             .label("L".into())
-            .style(Style::default().green())
-            .value_style(Style::default().black().on_green()),
+            .style(tank_drive_style(left_val))
+            .value_style(tank_drive_value_style(left_val)),
         Bar::default()
-            .value(100)
+            .value(((right_val as i16) + 100) as u64)
             .label("R".into())
-            .style(Style::default().green())
-            .value_style(Style::default().black().on_green()),
+            .style(tank_drive_style(right_val))
+            .value_style(tank_drive_value_style(right_val)),
     ];
     // TODO: style according to values
     let ur_chart = BarChart::default()
@@ -220,6 +227,26 @@ fn render_ui(frame: &mut Frame, control_state: &ControlState, messages: &VecDequ
     frame.render_widget(um_chart, upper_mid);
     frame.render_widget(ur_chart, upper_right);
     frame.render_widget(msg_para, lower_layout);
+}
+
+fn tank_drive_style(val: i8) -> Style {
+    if val > 0 {
+        Style::default().green()
+    } else if val == 0 {
+        Style::default().white()
+    } else {
+        Style::default().cyan()
+    }
+}
+
+fn tank_drive_value_style(val: i8) -> Style {
+    if val > 0 {
+        Style::default().green().on_green()
+    } else if val == 0 {
+        Style::default().white().on_white()
+    } else {
+        Style::default().cyan().on_cyan()
+    }
 }
 
 fn send_io_error(tx: Sender<Action>, err: std::io::Error, err_desc: &str) {
