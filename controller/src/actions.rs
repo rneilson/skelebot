@@ -64,7 +64,7 @@ pub struct ThreadMsg {
     pub message: String,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct StickPosition {
     pub x: i16,
     pub y: i16,
@@ -95,6 +95,14 @@ pub fn record_ticks_for_period(
     let msg = ThreadMsg {
         name: name.to_owned(),
         message: msg,
+    };
+    tx.send(Action::Message(msg)).unwrap();
+}
+
+pub fn send_message(tx: &Sender<Action>, name: &str, msg: &str) {
+    let msg = ThreadMsg {
+        name: name.to_owned(),
+        message: msg.to_owned(),
     };
     tx.send(Action::Message(msg)).unwrap();
 }
