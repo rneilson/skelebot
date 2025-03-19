@@ -16,17 +16,17 @@
 | 0xF5 |    2   | Turn right (L+, R-) | L 0-100, R 0-100 |
 | 0xF6 |    2   | Turn left (L-, R+)  | L 0-100, R 0-100 |
 | 0xF7 |    2   | Backward (L-, R-)   | L 0-100, R 0-100 |
+| 0xF8 |  N/A   | (Reserved)          | N/A              |
+| 0xF9 |  N/A   | (Reserved)          | N/A              |
 
 ### Telemetry
 
 | Type | Length | Description         | Payload values   |
 |------|--------|---------------------|------------------|
-| 0xF8 |    0   | No-op               | None             |
-| 0xF9 |    2   | Battery voltage     | Voltage (u16 BE) |
-| 0xFA |    2   | Left RPM            | RPM (u16 BE)     |
-| 0xFB |    2   | Right RPM           | RPM (u16 BE)     |
-| 0xFC |  N/A   | (Reserved)          | N/A              |
-| 0xFD |  N/A   | (Reserved)          | N/A              |
+| 0xFA |    0   | No-op               | None             |
+| 0xFB |    2   | Battery voltage     | Voltage (u16 BE) |
+| 0xFC |    2   | Left RPM            | RPM (u16 BE)     |
+| 0xFD |    2   | Right RPM           | RPM (u16 BE)     |
 | 0xFE |  N/A   | (Reserved)          | N/A              |
 | 0xFF |  N/A   | (Reserved)          | N/A              |
 
