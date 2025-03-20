@@ -41,7 +41,7 @@ fn main() -> io::Result<()> {
             joystick::collect_joystick_events(j_tx, &exit_flag);
         });
         s.spawn(|| {
-            radio::radio_comms(r_tx, &exit_flag);
+            radio::radio_comms(r_tx, &control_state_atomic, &exit_flag);
         });
         s.spawn(|| {
             term::collect_terminal_events(t_tx, &exit_flag);

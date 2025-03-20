@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+crazyradio = "0.3.0"
 crossterm = { version = "0.28.1", default-features = false, features = ["events"] }
 evdev = "0.13.0"
 glob = "0.3.2"
