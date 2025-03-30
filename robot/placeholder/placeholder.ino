@@ -17,8 +17,10 @@ uint8_t channel = 76;   // Default for RF24 lib, Crazyradio needs changing
 uint8_t control_addr[6] = {0xE7, 0xE7, 0xE7, 0xE7, 0xE7, 0x00}; // Default for Crazyradio
 
 // Timer values
-#define TICK_MS 100
+#define TICK_MS 20
+#define ACK_MS 50
 unsigned long next_tick = 0;
+unsigned long next_ack = 0;
 
 // Motor values
 char motor_dir = 'S';
@@ -132,17 +134,33 @@ void loop() {
     }
 
     unsigned long current_tick = millis();
-    // Not time yet, early return
-    if (current_tick < next_tick) {
-        return;
-    }
-    // Update next tick and execute this one
-    next_tick = current_tick + TICK_MS;
 
-    // Output current drive values to serial
-    char output_str[16];
-    sprintf(output_str, "%c %+.3i %+.3i\r", motor_dir, motor_left, motor_right);
-    Serial.print(output_str);
+    if (current_tick >= next_tick) {
+        // Update next tick and execute this one
+        next_tick = current_tick + TICK_MS;
+
+        // Output current drive values to serial
+        char output_str[16];
+        sprintf(output_str, "\r%c %+.3i %+.3i", motor_dir, motor_left, motor_right);
+        Serial.print(output_str);
+    }
+
+    if (current_tick >= next_ack) {
+        // Update next ack and stage this one for sending
+        next_ack = current_tick + ACK_MS;
+
+        // Fake a battery voltage using the current tick
+        uint16_t voltage = (uint16_t)65535 - (uint16_t)(current_tick & 0xFFFF);
+        uint8_t *voltage_bytes = (uint8_t*)&voltage;
+
+        uint8_t ack[3];
+        ack[0] = 0xFB;  // Battery voltage
+        // Convert little-endian to big-endian
+        ack[1] = voltage_bytes[1];
+        ack[2] = voltage_bytes[0];
+
+        radio.writeAckPayload(0, ack, 3);
+    }
 }
 
 int8_t motorSpeedCeiling(uint8_t value) {
