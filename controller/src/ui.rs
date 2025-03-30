@@ -13,15 +13,32 @@ use ratatui::widgets::{
 };
 
 use crate::actions::{
-    record_ticks_for_period, Action, ControlState, ThreadMsg, RECORD_TICKS_INTERVAL,
+    record_ticks_for_period, Action, BatteryVoltage, ControlState, ThreadMsg, RECORD_TICKS_INTERVAL,
 };
 
 const MESSAGE_LINES: u16 = 5;
 
 pub enum UIUpdate {
     Control(ControlState),
+    Battery(BatteryVoltage),
     Message(ThreadMsg),
     Error(ThreadMsg),
+}
+
+struct UIState {
+    control_state: ControlState,
+    battery_voltage: BatteryVoltage,
+    messages: VecDeque<String>,
+}
+
+impl UIState {
+    fn new() -> Self {
+        Self {
+            control_state: ControlState::from(0),
+            battery_voltage: BatteryVoltage(0),
+            messages: vec![].into(),
+        }
+    }
 }
 
 pub fn draw_ui(rx: Receiver<UIUpdate>, tx: Sender<Action>, exit_flag: &AtomicBool) {
@@ -29,8 +46,7 @@ pub fn draw_ui(rx: Receiver<UIUpdate>, tx: Sender<Action>, exit_flag: &AtomicBoo
     let mut next_marker = prev_marker + RECORD_TICKS_INTERVAL;
     let mut ticks = 0_u32;
 
-    let mut control_state = ControlState::from(0);
-    let mut messages: VecDeque<String> = vec![].into();
+    let mut ui_state = UIState::new();
 
     let backend = CrosstermBackend::new(stdout());
     let mut terminal = match Terminal::new(backend) {
@@ -55,7 +71,7 @@ pub fn draw_ui(rx: Receiver<UIUpdate>, tx: Sender<Action>, exit_flag: &AtomicBoo
     }));
 
     // Draw initial frame
-    if let Err(e) = terminal.draw(|frame| render_ui(frame, &control_state, &messages)) {
+    if let Err(e) = terminal.draw(|frame| render_ui(frame, &ui_state)) {
         send_io_error(tx, e, "couldn't draw frame");
         return;
     }
@@ -67,25 +83,30 @@ pub fn draw_ui(rx: Receiver<UIUpdate>, tx: Sender<Action>, exit_flag: &AtomicBoo
             Ok(update) => {
                 match update {
                     UIUpdate::Control(new_state) => {
-                        control_state = new_state;
+                        ui_state.control_state = new_state;
+                    }
+                    UIUpdate::Battery(new_voltage) => {
+                        ui_state.battery_voltage = new_voltage;
                     }
                     UIUpdate::Message(msg) => {
-                        messages.push_back(format!("{0}: {1}\r\n", msg.name, msg.message));
-                        if messages.len() > MESSAGE_LINES.into() {
-                            _ = messages.pop_front();
+                        ui_state
+                            .messages
+                            .push_back(format!("{0}: {1}\r\n", msg.name, msg.message));
+                        if ui_state.messages.len() > MESSAGE_LINES.into() {
+                            _ = ui_state.messages.pop_front();
                         }
                     }
                     UIUpdate::Error(err_msg) => {
-                        messages.push_back(format!(
+                        ui_state.messages.push_back(format!(
                             "Error from {0}: {1}\r\n",
                             err_msg.name, err_msg.message
                         ));
-                        if messages.len() > MESSAGE_LINES.into() {
-                            _ = messages.pop_front();
+                        if ui_state.messages.len() > MESSAGE_LINES.into() {
+                            _ = ui_state.messages.pop_front();
                         }
                     }
                 }
-                if let Err(e) = terminal.draw(|frame| render_ui(frame, &control_state, &messages)) {
+                if let Err(e) = terminal.draw(|frame| render_ui(frame, &ui_state)) {
                     send_io_error(tx, e, "couldn't draw frame");
                     return;
                 }
@@ -122,9 +143,10 @@ pub fn draw_ui(rx: Receiver<UIUpdate>, tx: Sender<Action>, exit_flag: &AtomicBoo
     let _ = stdout().execute(LeaveAlternateScreen);
 }
 
-fn render_ui(frame: &mut Frame, control_state: &ControlState, messages: &VecDeque<String>) {
+fn render_ui(frame: &mut Frame, ui_state: &UIState) {
     // Extracted from joystick position
-    let (left_val, right_val) = control_state.as_tank_drive();
+    let (left_val, right_val) = ui_state.control_state.as_tank_drive();
+    let voltage = ui_state.battery_voltage.as_float();
 
     let outer_layout = Layout::default()
         .direction(Direction::Vertical)
@@ -147,21 +169,23 @@ fn render_ui(frame: &mut Frame, control_state: &ControlState, messages: &VecDequ
     let upper_right = upper_layout[2];
 
     // Summary values
-    // TODO: battery
-    // TODO: left RPM
-    // TODO: right RPM
     let sum_data = vec![
         Line::from("Throttle"),
-        Line::from(control_state.throttle.to_string()),
+        Line::from(ui_state.control_state.throttle.to_string()),
         Line::from(""),
         Line::from("Steering"),
-        Line::from(control_state.steering.to_string()),
+        Line::from(ui_state.control_state.steering.to_string()),
         Line::from(""),
         Line::from("Left"),
         Line::from(format!("{}%", left_val)).style(tank_drive_style(left_val)),
         Line::from(""),
         Line::from("Right"),
         Line::from(format!("{}%", right_val)).style(tank_drive_style(right_val)),
+        Line::from(""),
+        Line::from("Battery"),
+        Line::from(format!("{:.2}V", voltage)),
+        // TODO: left RPM
+        // TODO: right RPM
     ];
     let sum_para = Paragraph::new(sum_data)
         .block(Block::bordered())
@@ -172,7 +196,10 @@ fn render_ui(frame: &mut Frame, control_state: &ControlState, messages: &VecDequ
     // Joystick position
     let positions = [
         (0.0, 0.0),
-        (control_state.steering.into(), control_state.throttle.into()),
+        (
+            ui_state.control_state.steering.into(),
+            ui_state.control_state.throttle.into(),
+        ),
     ];
     let labels = [Line::from("-32767"), Line::from("0"), Line::from("32767")];
     let um_data = vec![Dataset::default()
@@ -216,7 +243,11 @@ fn render_ui(frame: &mut Frame, control_state: &ControlState, messages: &VecDequ
         .max(200);
 
     // Message list
-    let msg_data: Vec<Line<'_>> = messages.iter().map(|s| Line::from(s.to_owned())).collect();
+    let msg_data: Vec<Line<'_>> = ui_state
+        .messages
+        .iter()
+        .map(|s| Line::from(s.to_owned()))
+        .collect();
     let msg_para = Paragraph::new(msg_data)
         .block(Block::bordered())
         .style(Style::new().white().on_black())

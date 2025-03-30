@@ -71,12 +71,22 @@ pub struct StickPosition {
 }
 
 #[derive(Debug)]
+pub struct BatteryVoltage(pub u16);
+
+impl BatteryVoltage {
+    pub fn as_float(&self) -> f32 {
+        f32::from(self.0) / 1024.0
+    }
+}
+
+#[derive(Debug)]
 pub enum Action {
     Message(ThreadMsg),
     Error(ThreadMsg),
     Fatal(ThreadMsg),
     KeyPress(KeyEvent),
     StickUpdate(StickPosition),
+    BatteryUpdate(BatteryVoltage),
 }
 
 pub fn record_ticks_for_period(

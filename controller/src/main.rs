@@ -116,6 +116,9 @@ fn handle_actions(
                         ui_tx.send(UIUpdate::Control(control_state))?;
                         // write!(io::stdout(), "Control state: {:?}\r\n", control_state)?;
                     }
+                    Action::BatteryUpdate(voltage) => {
+                        ui_tx.send(UIUpdate::Battery(voltage))?;
+                    }
                 }
             }
             Err(mpsc::RecvTimeoutError::Timeout) => {

@@ -6,8 +6,8 @@ use std::time::{Duration, Instant};
 use crazyradio::{self, Channel, Crazyradio, Datarate};
 
 use crate::actions::{
-    record_ticks_for_period, send_error_message, send_message, Action, ControlState,
-    RECORD_TICKS_INTERVAL,
+    record_ticks_for_period, send_error_message, send_message, Action, BatteryVoltage,
+    ControlState, RECORD_TICKS_INTERVAL,
 };
 
 pub fn radio_comms(tx: Sender<Action>, control_state_atomic: &AtomicU32, exit_flag: &AtomicBool) {
@@ -37,8 +37,8 @@ pub fn radio_comms(tx: Sender<Action>, control_state_atomic: &AtomicU32, exit_fl
         }
         if let Some(ref mut cr) = radio {
             match send_control_state(cr, control_state_atomic) {
-                Ok(_ack_data) => {
-                    // TODO: process ack data
+                Ok(ack_data) => {
+                    receive_ack_data(&tx, ack_data);
                 }
                 Err(e) => {
                     let msg = format!("couldn't transmit update: {}", e);
@@ -109,4 +109,29 @@ fn send_control_state(
     // TODO: check ack properties
 
     Ok(ack_data)
+}
+
+fn receive_ack_data(tx: &Sender<Action>, ack_data: [u8; 4]) {
+    match ack_data[0] {
+        // No-op, 0 bytes
+        0xFA => {}
+        // Battery voltage, 2 bytes
+        0xFB => {
+            let voltage = BatteryVoltage(u16::from_be_bytes([ack_data[1], ack_data[2]]));
+            if let Err(_) = tx.send(Action::BatteryUpdate(voltage)) {
+                // Can happen during shutdown
+            }
+        }
+        // Left RPM, 2 bytes
+        0xFC => {
+            // TODO
+        }
+        // Right RPM, 2 bytes
+        0xFD => {
+            // TODO
+        }
+        _ => {
+            // Send error message?
+        }
+    }
 }
