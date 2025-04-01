@@ -20,6 +20,8 @@ uint8_t control_addr[6] = {0xE7, 0xE7, 0xE7, 0xE7, 0xE7, 0x00}; // Default for C
 #define ACK_MS 50
 unsigned long next_ack = 0;
 
+#define BATT_PIN A6
+
 // // Motor values
 // char motor_dir = 'S';
 // int8_t motor_left = 0;
@@ -28,6 +30,10 @@ unsigned long next_ack = 0;
 
 void setup() {
     MOTOR.init();
+
+    // Set battery pin as input and use external voltage ref
+    analogReference(EXTERNAL);
+    pinMode(BATT_PIN, INPUT);
 
     // Radio init
     if (!radio.begin()) {
@@ -123,7 +129,10 @@ void loop() {
         next_ack = current_tick + ACK_MS;
 
         // Get divided battery voltage from ADC6
-        uint16_t voltage = analogRead(A6);
+        // R1 = 430k, R2 = 100k, Vo = Vi * (430000 + 100000) / 100000
+        // We have clearance here in terms of int sizes because the
+        // analog value is 10 bits
+        uint16_t voltage = getBatteryVoltage();
         uint8_t *voltage_bytes = (uint8_t*)&voltage;
 
         uint8_t ack[3];
@@ -138,4 +147,24 @@ void loop() {
 
 uint8_t motorSpeedCeiling(uint8_t value) {
     return (uint8_t)(value < 100 ? value : 100);
+}
+
+uint16_t getBatteryVoltage() {
+    uint16_t voltage = 0;
+
+    // Average over 4 readings
+    for (char i = 0; i < 4; i++) {
+        voltage += analogRead(A6);
+    }
+    voltage = voltage / 4;
+
+    // Get divided voltage
+    // R1 = 430k, R2 = 100k, Vo = Vi * (430000 + 100000) / 100000
+    // Then multiply by 5, as the reference is 5V
+    // ((430000 + 100000) / 100000) * 5 = 530 * 5 / 100 = 53 / 2
+    // We have clearance here in terms of int sizes because the
+    // analog value is 10 bits
+    voltage = voltage * 53 / 2;
+
+    return voltage;
 }
