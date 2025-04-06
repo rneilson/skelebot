@@ -78,6 +78,20 @@ fn init_crazyradio(channel: u8) -> Result<Crazyradio, crazyradio::Error> {
     Ok(cr)
 }
 
+// Maps signed +/- 100 to 0-200 for transmission
+fn map_drive_value(value: i8) -> u8 {
+    if value <= -100_i8 {
+        return 0_u8;
+    }
+    if value >= 100_i8 {
+        return 200_u8;
+    }
+    if value < 0_i8 {
+        return (value + 100_i8) as u8;
+    }
+    return (value as u8) + 100_u8;
+}
+
 fn send_control_state(
     cr: &mut Crazyradio,
     state: &AtomicU32,
@@ -85,27 +99,20 @@ fn send_control_state(
     let control_state = ControlState::from(state.load(Ordering::Relaxed));
     let (left_val, right_val) = control_state.as_tank_drive();
     let mut command: [u8; 3] = [0; 3];
+    let mut command_len: usize = 1;
 
     if left_val == 0 && right_val == 0 {
         command[0] = 0xF3; // Stop
-    } else if left_val >= 0 {
-        if right_val >= 0 {
-            command[0] = 0xF4; // Forward
-        } else {
-            command[0] = 0xF5; // Turn right
-        }
     } else {
-        if right_val >= 0 {
-            command[0] = 0xF6; // Turn left
-        } else {
-            command[0] = 0xF7; // Backward
-        }
+        command[0] = 0xF4; // Drive
+        command[1] = map_drive_value(left_val);
+        command[2] = map_drive_value(right_val);
+        command_len = 3;
     }
-    command[1] = left_val.unsigned_abs();
-    command[2] = right_val.unsigned_abs();
 
+    let cmd_slice = &command[..command_len];
     let mut ack_data: [u8; 4] = [0; 4];
-    let _ack = cr.send_packet(&command, &mut ack_data)?;
+    let _ack = cr.send_packet(cmd_slice, &mut ack_data)?;
     // TODO: check ack properties
 
     Ok(ack_data)
@@ -114,7 +121,8 @@ fn send_control_state(
 fn receive_ack_data(tx: &Sender<Action>, ack_data: [u8; 4]) {
     match ack_data[0] {
         // No-op, 0 bytes
-        0xFA => {}
+        0xF8 => {}
+        // 0xF9, 0xFA reserved
         // Battery voltage, 2 bytes
         0xFB => {
             let voltage = BatteryVoltage(u16::from_be_bytes([ack_data[1], ack_data[2]]));
@@ -130,6 +138,7 @@ fn receive_ack_data(tx: &Sender<Action>, ack_data: [u8; 4]) {
         0xFD => {
             // TODO
         }
+        // 0xFE, 0xFF reserved
         _ => {
             // Send error message?
         }
