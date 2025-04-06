@@ -6,29 +6,29 @@
 
 ### Commands
 
-| Type | Length | Description         | Payload values   |
-|------|--------|---------------------|------------------|
-| 0xF0 |    0   | No-op               | None             |
-| 0xF1 |    1   | Change channel      | Channel 0-126    |
-| 0xF2 |  N/A   | (Reserved)          | N/A              |
-| 0xF3 |    0   | Stop                | None             |
-| 0xF4 |    2   | Forward (L+, R+)    | L 0-100, R 0-100 |
-| 0xF5 |    2   | Turn right (L+, R-) | L 0-100, R 0-100 |
-| 0xF6 |    2   | Turn left (L-, R+)  | L 0-100, R 0-100 |
-| 0xF7 |    2   | Backward (L-, R-)   | L 0-100, R 0-100 |
-| 0xF8 |  N/A   | (Reserved)          | N/A              |
-| 0xF9 |  N/A   | (Reserved)          | N/A              |
+| Type | Length | Description         | Payload values   | Notes                   |
+|------|--------|---------------------|------------------|-------------------------|
+| 0xF0 |    0   | No-op               | None             |                         |
+| 0xF1 |    1   | Change channel      | Channel 0-126    |                         |
+| 0xF2 |  N/A   | (Reserved)          | N/A              |                         |
+| 0xF3 |    0   | Stop                | None             |                         |
+| 0xF4 |    2   | Drive (L, R)        | L 0-200, R 0-200 | (0, 200) -> (-100, 100) |
+| 0xF5 |  N/A   | (Reserved)          | N/A              |                         |
+| 0xF6 |  N/A   | (Reserved)          | N/A              |                         |
+| 0xF7 |  N/A   | (Reserved)          | N/A              |                         |
 
 ### Telemetry
 
-| Type | Length | Description         | Payload values   |
-|------|--------|---------------------|------------------|
-| 0xFA |    0   | No-op               | None             |
-| 0xFB |    2   | Battery voltage     | Voltage (u16 BE) |
-| 0xFC |    2   | Left RPM            | RPM (u16 BE)     |
-| 0xFD |    2   | Right RPM           | RPM (u16 BE)     |
-| 0xFE |  N/A   | (Reserved)          | N/A              |
-| 0xFF |  N/A   | (Reserved)          | N/A              |
+| Type | Length | Description         | Payload values   | Notes                   |
+|------|--------|---------------------|------------------|-------------------------|
+| 0xF8 |    0   | No-op               | None             |                         |
+| 0xF9 |  N/A   | (Reserved)          | N/A              |                         |
+| 0xFA |  N/A   | (Reserved)          | N/A              |                         |
+| 0xFB |    2   | Battery voltage     | Voltage (u16 BE) | Vbat / 1024.0           |
+| 0xFC |    2   | Left RPM            | RPM (u16 BE)     |                         |
+| 0xFD |    2   | Right RPM           | RPM (u16 BE)     |                         |
+| 0xFE |  N/A   | (Reserved)          | N/A              |                         |
+| 0xFF |  N/A   | (Reserved)          | N/A              |                         |
 
 ## Radio channels
 
