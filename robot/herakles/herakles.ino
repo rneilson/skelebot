@@ -18,7 +18,7 @@ uint8_t control_addr[6] = {0xE7, 0xE7, 0xE7, 0xE7, 0xE7, 0x00}; // Default for C
 
 // Timer values
 #define ACK_MS 50
-unsigned long next_ack = 0;
+unsigned long last_ack = 0;
 
 #define BATT_PIN A6
 
@@ -95,7 +95,7 @@ void loop() {
                 MOTOR.setSpeedDir1(motorSpeedCeiling(command[1]), DIRF);
                 MOTOR.setSpeedDir2(motorSpeedCeiling(command[2]), DIRR);    // Right reversed
                 break;
-                case 0xF5:
+            case 0xF5:
                 // Turn right (L+, R-)
                 MOTOR.setSpeedDir1(motorSpeedCeiling(command[1]), DIRF);
                 MOTOR.setSpeedDir2(motorSpeedCeiling(command[2]), DIRF);    // Right reversed
@@ -124,9 +124,11 @@ void loop() {
 
     unsigned long current_tick = millis();
 
-    if (current_tick >= next_ack) {
+    if (current_tick - last_ack >= ACK_MS) {
         // Update next ack and stage this one for sending
-        next_ack = current_tick + ACK_MS;
+        do {
+            last_ack = current_tick + ACK_MS;
+        } while (current_tick - last_ack >= ACK_MS);
 
         // Get divided battery voltage from ADC6
         // R1 = 430k, R2 = 100k, Vo = Vi * (430000 + 100000) / 100000

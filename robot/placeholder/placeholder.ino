@@ -19,8 +19,8 @@ uint8_t control_addr[6] = {0xE7, 0xE7, 0xE7, 0xE7, 0xE7, 0x00}; // Default for C
 // Timer values
 #define TICK_MS 20
 #define ACK_MS 50
-unsigned long next_tick = 0;
-unsigned long next_ack = 0;
+unsigned long last_tick = 0;
+unsigned long last_ack = 0;
 
 // Motor values
 char motor_dir = 'S';
@@ -135,9 +135,11 @@ void loop() {
 
     unsigned long current_tick = millis();
 
-    if (current_tick >= next_tick) {
+    if (current_tick - last_tick >= TICK_MS) {
         // Update next tick and execute this one
-        next_tick = current_tick + TICK_MS;
+        do {
+            last_tick = current_tick + TICK_MS;
+        } while (current_tick - last_tick >= TICK_MS);
 
         // Output current drive values to serial
         char output_str[16];
@@ -145,9 +147,11 @@ void loop() {
         Serial.print(output_str);
     }
 
-    if (current_tick >= next_ack) {
+    if (current_tick - last_ack >= ACK_MS) {
         // Update next ack and stage this one for sending
-        next_ack = current_tick + ACK_MS;
+        do {
+            last_ack = current_tick + ACK_MS;
+        } while (current_tick - last_ack >= ACK_MS);
 
         // Fake a battery voltage using the current tick
         uint16_t voltage = (uint16_t)65535 - (uint16_t)(current_tick & 0xFFFF);
