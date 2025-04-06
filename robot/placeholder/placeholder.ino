@@ -104,28 +104,19 @@ void loop() {
                 motor_right = 0;
                 break;
             case 0xF4:
-                // Forward (L+, R+)
-                motor_dir = 'F';
-                motor_left = motorSpeedCeiling(command[1]);
-                motor_right = motorSpeedCeiling(command[2]);
+                // Drive (L, R)
+                motor_left = convertMotorSpeed(command[1]);
+                motor_right = convertMotorSpeed(command[2]);
+                motor_dir = getMotorDir(motor_left, motor_right);
                 break;
             case 0xF5:
-                // Turn right (L+, R-)
-                motor_dir = 'R';
-                motor_left = motorSpeedCeiling(command[1]);
-                motor_right = 0 - motorSpeedCeiling(command[2]);
+                // (Reserved)
                 break;
             case 0xF6:
-                // Turn left (L-, R+)
-                motor_dir = 'L';
-                motor_left = 0 - motorSpeedCeiling(command[1]);
-                motor_right = motorSpeedCeiling(command[2]);
+                // (Reserved)
                 break;
             case 0xF7:
-                // Backward (L-, R-)
-                motor_dir = 'B';
-                motor_left = 0 - motorSpeedCeiling(command[1]);
-                motor_right = 0 - motorSpeedCeiling(command[2]);
+                // (Reserved)
                 break;
             default:
                 break;
@@ -138,7 +129,7 @@ void loop() {
     if (current_tick - last_tick >= TICK_MS) {
         // Update next tick and execute this one
         do {
-            last_tick = current_tick + TICK_MS;
+            last_tick += TICK_MS;
         } while (current_tick - last_tick >= TICK_MS);
 
         // Output current drive values to serial
@@ -150,7 +141,7 @@ void loop() {
     if (current_tick - last_ack >= ACK_MS) {
         // Update next ack and stage this one for sending
         do {
-            last_ack = current_tick + ACK_MS;
+            last_ack += ACK_MS;
         } while (current_tick - last_ack >= ACK_MS);
 
         // Fake a battery voltage using the current tick
@@ -167,6 +158,30 @@ void loop() {
     }
 }
 
-int8_t motorSpeedCeiling(uint8_t value) {
-    return (int8_t)(value < 100 ? value : 100);
+int8_t convertMotorSpeed(uint8_t value) {
+    if (value < 0) return -100;
+    if (value > 200) return 100;
+    if (value < 100) {
+        return ((int8_t)value - 100);
+    }
+    return (int8_t)(value - 100);
+}
+
+char getMotorDir(int8_t left, int8_t right) {
+    if (left == 0 && right == 0) return 'S';
+    if (left >= 0) {
+        // Forward (L+, R+)
+        if (right >= 0) {
+            return 'F';
+        }
+        // Turn right (L+, R-)
+        return 'R';
+    } else {
+        // Turn left (L-, R+)
+        if (right >= 0) {
+            return 'L';
+        }
+        // Backward (L-, R-)
+        return 'B';
+    }
 }

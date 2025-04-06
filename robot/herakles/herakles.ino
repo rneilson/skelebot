@@ -91,29 +91,17 @@ void loop() {
                 MOTOR.setStop2();
                 break;
             case 0xF4:
-                // Forward (L+, R+)
-                MOTOR.setSpeedDir1(motorSpeedCeiling(command[1]), DIRF);
-                MOTOR.setSpeedDir2(motorSpeedCeiling(command[2]), DIRR);    // Right reversed
+                // Drive (L, R)
+                setLeftMotorSpeed(command[1]);
+                setRightMotorSpeed(command[2]);
                 break;
             case 0xF5:
-                // Turn right (L+, R-)
-                MOTOR.setSpeedDir1(motorSpeedCeiling(command[1]), DIRF);
-                MOTOR.setSpeedDir2(motorSpeedCeiling(command[2]), DIRF);    // Right reversed
-                break;
-            case 0xF6:
-                // Turn left (L-, R+)
-                MOTOR.setSpeedDir1(motorSpeedCeiling(command[1]), DIRR);
-                MOTOR.setSpeedDir2(motorSpeedCeiling(command[2]), DIRR);    // Right reversed
-                break;
-            case 0xF7:
-                // Backward (L-, R-)
-                MOTOR.setSpeedDir1(motorSpeedCeiling(command[1]), DIRR);
-                MOTOR.setSpeedDir2(motorSpeedCeiling(command[2]), DIRF);    // Right reversed
-                break;
-            case 0xF8:
                 // (Reserved)
                 break;
-            case 0xF9:
+            case 0xF6:
+                // (Reserved)
+                break;
+            case 0xF7:
                 // (Reserved)
                 break;
             default:
@@ -127,7 +115,7 @@ void loop() {
     if (current_tick - last_ack >= ACK_MS) {
         // Update next ack and stage this one for sending
         do {
-            last_ack = current_tick + ACK_MS;
+            last_ack += ACK_MS;
         } while (current_tick - last_ack >= ACK_MS);
 
         // Get divided battery voltage from ADC6
@@ -148,7 +136,37 @@ void loop() {
 }
 
 uint8_t motorSpeedCeiling(uint8_t value) {
-    return (uint8_t)(value < 100 ? value : 100);
+    return value < 100 ? value : 100;
+}
+
+void setLeftMotorSpeed(uint8_t value) {
+    uint8_t speed;
+    uint8_t dir;
+
+    if (value >= 100) {
+        speed = motorSpeedCeiling(value - 100);
+        dir = DIRF;
+    } else {
+        speed = 100 - value;
+        dir = DIRR;
+    }
+
+    MOTOR.setSpeedDir1(speed, dir);
+}
+
+void setRightMotorSpeed(uint8_t value) {
+    uint8_t speed;
+    uint8_t dir;
+
+    if (value >= 100) {
+        speed = motorSpeedCeiling(value - 100);
+        dir = DIRR; // Right reversed
+    } else {
+        speed = 100 - value;
+        dir = DIRF; // Right reversed
+    }
+
+    MOTOR.setSpeedDir2(speed, dir);
 }
 
 uint16_t getBatteryVoltage() {
