@@ -33,13 +33,23 @@ impl ControlState {
 
     // Convert throttle and steering values to left/right tank-drive values,
     // as expressed in +/- %
-    // Logic from https://ewpratten.com/blog/joystick-to-voltage
+    // Constant curvature drive logic from https://ewpratten.com/blog/joystick-to-voltage
+    // except straight tank drive when no throttle component
     pub fn as_tank_drive(&self) -> (i8, i8) {
         let t = (self.throttle as f64) / (i16::MAX as f64);
         let s = (self.steering as f64) / (i16::MAX as f64);
 
-        let left = ((t + (t.abs() * s)) + (t + s)) / 2.0;
-        let right = ((t - (t.abs() * s)) + (t - s)) / 2.0;
+        let (left, right) = if t == 0.0 {
+            // Use tank drive when no throttle applied to allow turning in-place
+            let left = t + s;
+            let right = t - s;
+            (left, right)
+        } else {
+            // Use constant curvature when throttle is applied
+            let left = t + (t.abs() * s);
+            let right = t - (t.abs() * s);
+            (left, right)
+        };
         let m = f64::max(left.abs(), right.abs()).max(1.0);
 
         let left = (100.0 * left / m).clamp(-100.0, 100.0) as i8;
