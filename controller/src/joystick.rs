@@ -8,7 +8,8 @@ use evdev::{AbsoluteAxisCode, Device, EventSummary, InputEvent};
 use nix::sys::epoll::{Epoll, EpollCreateFlags, EpollEvent, EpollFlags, EpollTimeout};
 
 use crate::actions::{
-    record_ticks_for_period, send_error_message, send_message, Action, StickPosition,
+    record_ticks_for_period, send_error_message, send_message,
+    Action, StickPosition, StickPositions,
     RECORD_TICKS_INTERVAL,
 };
 
@@ -89,7 +90,8 @@ pub fn collect_joystick_events(tx: Sender<Action>, exit_flag: &AtomicBool) {
 struct StickDevice {
     device: Device,
     epoll: Epoll,
-    pos: StickPosition,
+    left: StickPosition,
+    right: StickPosition,
 }
 
 impl StickDevice {
@@ -118,7 +120,8 @@ impl StickDevice {
             return Ok(Some(StickDevice {
                 device,
                 epoll,
-                pos: StickPosition { x: 0, y: 0 },
+                left: StickPosition { x: 0, y: 0 },
+                right: StickPosition { x: 0, y: 0 },
             }));
         }
         Ok(None)
@@ -131,7 +134,7 @@ impl StickDevice {
             .to_owned()
     }
 
-    pub fn update_position(&mut self) -> Result<StickPosition, io::Error> {
+    pub fn update_position(&mut self) -> Result<StickPositions, io::Error> {
         let mut events = [EpollEvent::empty(); 2];
         let max_wait = EpollTimeout::try_from(MAX_WAIT).unwrap();
         self.epoll.wait(&mut events, max_wait)?;
@@ -139,7 +142,7 @@ impl StickDevice {
         match self.device.fetch_events() {
             Ok(iterator) => {
                 for ev in iterator {
-                    Self::process_event(&mut self.pos, ev);
+                    Self::process_event(&mut self.left, &mut self.right, ev);
                 }
             }
             Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
@@ -150,18 +153,27 @@ impl StickDevice {
             }
         }
 
-        Ok(self.pos.clone())
+        Ok(StickPositions(self.left.clone(), self.right.clone()))
     }
 
-    fn process_event(pos: &mut StickPosition, event: InputEvent) {
+    fn process_event(l_pos: &mut StickPosition, r_pos: &mut StickPosition, event: InputEvent) {
         match event.destructure() {
             EventSummary::AbsoluteAxis(_, AbsoluteAxisCode::ABS_X, value) => {
                 // Use X axis as-is
-                pos.x = clamp_with_deadzone(value);
+                l_pos.x = clamp_with_deadzone(value);
             }
             EventSummary::AbsoluteAxis(_, AbsoluteAxisCode::ABS_Y, value) => {
                 // Invert Y axis
-                pos.y = clamp_with_deadzone(value).saturating_neg();
+                l_pos.y = clamp_with_deadzone(value).saturating_neg();
+            }
+            EventSummary::AbsoluteAxis(_, AbsoluteAxisCode::ABS_RX, value) => {
+                // Use X axis as-is
+                r_pos.x = clamp_with_deadzone(value);
+            }
+            EventSummary::AbsoluteAxis(_, AbsoluteAxisCode::ABS_RY, value) => {
+                // Invert Y axis
+                // TODO: add flag to "invert" (ie *not* invert) Y axis
+                r_pos.y = clamp_with_deadzone(value).saturating_neg();
             }
             _ => {}
         }

@@ -12,13 +12,21 @@ pub const RECORD_TICKS_INTERVAL: Duration = Duration::from_secs(2);
 pub struct ControlState {
     pub throttle: i16,
     pub steering: i16,
+    pub pan: i16,
+    pub tilt: i16,
 }
 
 impl ControlState {
-    pub fn as_u32(&self) -> u32 {
-        let high = (self.throttle as u16) as u32;
-        let low = (self.steering as u16) as u32;
-        (high << 16) | low
+    pub fn as_u64(&self) -> u64 {
+        let left_high = (self.throttle as u16) as u32;
+        let left_low = (self.steering as u16) as u32;
+        let left = ((left_high << 16) | left_low) as u64;
+
+        let right_high = (self.pan as u16) as u32;
+        let right_low = (self.tilt as u16) as u32;
+        let right = ((right_high << 16) | right_low) as u64;
+
+        (left << 32) | right
     }
 
     pub fn trim(mut self) -> Self {
@@ -27,6 +35,12 @@ impl ControlState {
         }
         if self.steering == i16::MIN {
             self.steering += 1;
+        }
+        if self.pan == i16::MIN {
+            self.pan += 1;
+        }
+        if self.tilt == i16::MIN {
+            self.tilt += 1;
         }
         self
     }
@@ -57,13 +71,28 @@ impl ControlState {
 
         (left, right)
     }
+
+    // Convert pan and tilt values to angular values in +/- degrees (max 90°)
+    pub fn as_camera_angles(&self) -> (i8, i8) {
+        let pan = (self.pan as f64) / (i16::MAX as f64);
+        let tilt = (self.tilt as f64) / (i16::MAX as f64);
+
+        let pan = (90.0 * pan).clamp(-90.0, 90.0) as i8;
+        let tilt = (90.0 * tilt).clamp(-90.0, 90.0) as i8;
+
+        (pan, tilt)
+    }
 }
 
-impl From<u32> for ControlState {
-    fn from(value: u32) -> Self {
+impl From<u64> for ControlState {
+    fn from(value: u64) -> Self {
+        let left = (value >> 32) as u32;
+        let right = (value & 0xffffffff) as u32;
         Self {
-            throttle: (value >> 16) as i16,
-            steering: (value & 0xffff) as i16,
+            throttle: (left >> 16) as i16,
+            steering: (left & 0xffff) as i16,
+            pan: (right >> 16) as i16,
+            tilt: (right & 0xffff) as i16,
         }
     }
 }
@@ -80,6 +109,9 @@ pub struct StickPosition {
     pub y: i16,
 }
 
+#[derive(Clone, Debug)]
+pub struct StickPositions (pub StickPosition, pub StickPosition);
+
 #[derive(Debug)]
 pub struct BatteryVoltage(pub u16);
 
@@ -95,7 +127,7 @@ pub enum Action {
     Error(ThreadMsg),
     Fatal(ThreadMsg),
     KeyPress(KeyEvent),
-    StickUpdate(StickPosition),
+    StickUpdate(StickPositions),
     BatteryUpdate(BatteryVoltage),
 }
 

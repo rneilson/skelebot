@@ -1,4 +1,4 @@
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::Sender;
 use std::thread::sleep;
 use std::time::{Duration, Instant};
@@ -10,7 +10,7 @@ use crate::actions::{
     ControlState, RECORD_TICKS_INTERVAL,
 };
 
-pub fn radio_comms(tx: Sender<Action>, control_state_atomic: &AtomicU32, exit_flag: &AtomicBool) {
+pub fn radio_comms(tx: Sender<Action>, control_state_atomic: &AtomicU64, exit_flag: &AtomicBool) {
     let mut prev_marker = Instant::now();
     let mut next_marker = prev_marker + RECORD_TICKS_INTERVAL;
     let mut ticks = 0_u32;
@@ -36,7 +36,7 @@ pub fn radio_comms(tx: Sender<Action>, control_state_atomic: &AtomicU32, exit_fl
             }
         }
         if let Some(ref mut cr) = radio {
-            match send_control_state(cr, control_state_atomic) {
+            match send_drive_state(cr, control_state_atomic) {
                 Ok(ack_data) => {
                     receive_ack_data(&tx, ack_data);
                 }
@@ -45,6 +45,7 @@ pub fn radio_comms(tx: Sender<Action>, control_state_atomic: &AtomicU32, exit_fl
                     send_error_message(&tx, "Radio", &msg);
                 }
             }
+            // TODO: send_camera_state()
         }
 
         // TODO: switch to timerfd
@@ -79,7 +80,7 @@ fn init_crazyradio(channel: u8) -> Result<Crazyradio, crazyradio::Error> {
 }
 
 // Maps signed +/- 100 to 0-200 for transmission
-fn map_drive_value(value: i8) -> u8 {
+fn map_percent_value(value: i8) -> u8 {
     if value <= -100_i8 {
         return 0_u8;
     }
@@ -92,9 +93,9 @@ fn map_drive_value(value: i8) -> u8 {
     return (value as u8) + 100_u8;
 }
 
-fn send_control_state(
+fn send_drive_state(
     cr: &mut Crazyradio,
-    state: &AtomicU32,
+    state: &AtomicU64,
 ) -> Result<[u8; 4], crazyradio::Error> {
     let control_state = ControlState::from(state.load(Ordering::Relaxed));
     let (left_val, right_val) = control_state.as_tank_drive();
@@ -105,8 +106,8 @@ fn send_control_state(
         command[0] = 0xF3; // Stop
     } else {
         command[0] = 0xF4; // Drive
-        command[1] = map_drive_value(left_val);
-        command[2] = map_drive_value(right_val);
+        command[1] = map_percent_value(left_val);
+        command[2] = map_percent_value(right_val);
         command_len = 3;
     }
 

@@ -2,7 +2,7 @@
 
 use std::error::Error;
 use std::io::{self, Write};
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread;
 use std::time::Duration;
@@ -23,7 +23,7 @@ fn main() -> io::Result<()> {
     terminal::enable_raw_mode()?;
     write!(io::stdout(), "Starting up...\r\n")?;
 
-    let control_state_atomic = AtomicU32::new(0);
+    let control_state_atomic = AtomicU64::new(0);
     let exit_flag = AtomicBool::new(false);
     let mut err_msg: Option<String> = None;
 
@@ -70,7 +70,7 @@ fn handle_actions(
     rx: Receiver<Action>,
     ui_tx: Sender<UIUpdate>,
     exit_flag: &AtomicBool,
-    control_state_atomic: &AtomicU32,
+    control_state_atomic: &AtomicU64,
 ) -> Result<(), Box<dyn Error>> {
     let max_wait = Duration::from_millis(20);
     'listener: loop {
@@ -101,7 +101,7 @@ fn handle_actions(
                         match handle_keypress_event(control_state, key_event) {
                             Some(control_state) => {
                                 control_state_atomic
-                                    .store(control_state.as_u32(), Ordering::Relaxed);
+                                    .store(control_state.as_u64(), Ordering::Relaxed);
                                 ui_tx.send(UIUpdate::Control(control_state))?;
                                 // write!(io::stdout(), "Control state: {:?}\r\n", control_state)?;
                             }
@@ -111,8 +111,8 @@ fn handle_actions(
                         }
                     }
                     Action::StickUpdate(stick_pos) => {
-                        let control_state = handle_stick_position(stick_pos);
-                        control_state_atomic.store(control_state.as_u32(), Ordering::Relaxed);
+                        let control_state = handle_stick_positions(stick_pos.0, stick_pos.1);
+                        control_state_atomic.store(control_state.as_u64(), Ordering::Relaxed);
                         ui_tx.send(UIUpdate::Control(control_state))?;
                         // write!(io::stdout(), "Control state: {:?}\r\n", control_state)?;
                     }
@@ -189,13 +189,15 @@ fn handle_keypress_event(
 }
 
 /// Converts a joystick position to a new control state
-fn handle_stick_position(stick_pos: StickPosition) -> ControlState {
+fn handle_stick_positions(move_pos: StickPosition, view_pos: StickPosition) -> ControlState {
     // Convert stick position to control state
     // At present this is a simple mapping of Y axis to throttle
     // and X axis to steering
     let control_state = ControlState {
-        throttle: stick_pos.y,
-        steering: stick_pos.x,
+        throttle: move_pos.y,
+        steering: move_pos.x,
+        pan: view_pos.x,
+        tilt: view_pos.y,
     };
     control_state.trim()
 }

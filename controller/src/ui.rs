@@ -146,12 +146,13 @@ pub fn draw_ui(rx: Receiver<UIUpdate>, tx: Sender<Action>, exit_flag: &AtomicBoo
 fn render_ui(frame: &mut Frame, ui_state: &UIState) {
     // Extracted from joystick position
     let (left_val, right_val) = ui_state.control_state.as_tank_drive();
+    let (pan_val, tilt_val) = ui_state.control_state.as_camera_angles();
     let voltage = ui_state.battery_voltage.as_float();
 
     let outer_layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints(vec![
-            Constraint::Min(11),
+            Constraint::Min(20),
             Constraint::Length(MESSAGE_LINES + 2),
         ])
         .split(frame.area());
@@ -159,7 +160,7 @@ fn render_ui(frame: &mut Frame, ui_state: &UIState) {
         .direction(Direction::Horizontal)
         .constraints(vec![
             Constraint::Length(14),
-            Constraint::Min(11),
+            Constraint::Min(20),
             Constraint::Length(14),
         ])
         .split(outer_layout[0]);
@@ -182,6 +183,12 @@ fn render_ui(frame: &mut Frame, ui_state: &UIState) {
         Line::from("Right"),
         Line::from(format!("{}%", right_val)).style(tank_drive_style(right_val)),
         Line::from(""),
+        Line::from("Pan"),
+        Line::from(format!("{}°", pan_val)).style(camera_angle_style(pan_val)),
+        Line::from(""),
+        Line::from("Tilt"),
+        Line::from(format!("{}°", tilt_val)).style(camera_angle_style(tilt_val)),
+        Line::from(""),
         Line::from("Battery"),
         Line::from(format!("{:.2}V", voltage)),
         // TODO: left RPM
@@ -194,19 +201,33 @@ fn render_ui(frame: &mut Frame, ui_state: &UIState) {
         .wrap(Wrap { trim: true });
 
     // Joystick position
-    let positions = [
+    let drive_positions = [
         (0.0, 0.0),
         (
             ui_state.control_state.steering.into(),
             ui_state.control_state.throttle.into(),
         ),
     ];
+    let camera_positions = [
+        (0.0, 0.0),
+        (
+            ui_state.control_state.pan.into(),
+            ui_state.control_state.tilt.into(),
+        ),
+    ];
     let labels = [Line::from("-32767"), Line::from("0"), Line::from("32767")];
-    let um_data = vec![Dataset::default()
-        .marker(symbols::Marker::Dot)
-        .graph_type(GraphType::Line)
-        .style(Style::default().cyan().bold())
-        .data(&positions)];
+    let um_data = vec![
+        Dataset::default()
+            .marker(symbols::Marker::Dot)
+            .graph_type(GraphType::Line)
+            .style(Style::default().cyan().bold())
+            .data(&drive_positions),
+        Dataset::default()
+            .marker(symbols::Marker::Dot)
+            .graph_type(GraphType::Line)
+            .style(Style::default().yellow().bold())
+            .data(&camera_positions),
+    ];
     let um_x_axis = Axis::default()
         .style(Style::default().white())
         .bounds([(i16::MIN + 1).into(), i16::MAX.into()])
@@ -277,6 +298,16 @@ fn tank_drive_value_style(val: i8) -> Style {
         Style::default().white().on_white()
     } else {
         Style::default().cyan().on_cyan()
+    }
+}
+
+fn camera_angle_style(val: i8) -> Style {
+    if val > 0 {
+        Style::default().light_yellow()
+    } else if val == 0 {
+        Style::default().white()
+    } else {
+        Style::default().yellow()
     }
 }
 
