@@ -1,0 +1,6 @@
+ACTION=="remove", GOTO="userspace_joystick_end"
+SUBSYSTEM!="input", GOTO="userspace_joystick_end"
+
+KERNEL=="event*", ENV{ID_BUS}=="", ENV{.INPUT_CLASS}=="joystick", SYMLINK+="input/by-id/userspace-$env{ID_SERIAL}-$number-event-joystick"
+
+LABEL="userspace_joystick_end"
