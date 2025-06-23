@@ -1,5 +1,11 @@
 #include "i2c-joystick.h"
+
+#include <linux/i2c-dev.h>
 #include <i2c/smbus.h>
+#include <sys/ioctl.h>
+#include <fcntl.h>
+#include <stdio.h>
+#include <stdlib.h>
 
 int open_i2c_device(char *filename) {
     int file;

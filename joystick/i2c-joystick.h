@@ -1,13 +1,7 @@
 #ifndef I2C_JOYSTICK_H
 #define I2C_JOYSTICK_H
 
-#include <stdio.h>
 #include <stdint.h>
-#include <stdlib.h>
-#include <linux/i2c-dev.h>
-#include <i2c/smbus.h>
-#include <sys/ioctl.h>
-#include <fcntl.h>
 
 #define X_AXIS_REGISTER 0x50 // 2 bytes, low high
 #define Y_AXIS_REGISTER 0x52 // 2 bytes, low high
