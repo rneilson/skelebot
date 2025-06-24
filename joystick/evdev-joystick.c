@@ -13,7 +13,7 @@
 #include <string.h>
 #include <unistd.h>
 
-static int setup_axis(int file, unsigned axis, int min, int max) {
+static int setup_axis(int file, unsigned axis, int fuzz, int flat) {
     if (ioctl(file, UI_SET_ABSBIT, axis) < 0) {
         fprintf(stderr, "Error in UI_SET_ABSBIT for axis 0x%x: %s\n", axis, strerror(errno));
         return -1;
@@ -22,8 +22,10 @@ static int setup_axis(int file, unsigned axis, int min, int max) {
     struct uinput_abs_setup setup = {
         .code = axis,
         .absinfo = {
-            .minimum = min,
-            .maximum = max,
+            .minimum = JOYSTICK_AXIS_MIN,
+            .maximum = JOYSTICK_AXIS_MAX,
+            .fuzz = fuzz,
+            .flat = flat,
         },
     };
 
@@ -35,7 +37,7 @@ static int setup_axis(int file, unsigned axis, int min, int max) {
     return 0;
 }
 
-int setup_joystick_device(int min, int max) {
+int setup_joystick_device(int fuzz, int flat) {
     int file = open("/dev/uinput", O_WRONLY | O_NONBLOCK);
     if (file < 0) {
         fprintf(stderr, "Error opening /dev/uinput: %s\n", strerror(errno));
@@ -46,10 +48,10 @@ int setup_joystick_device(int min, int max) {
 
     // Absolute position handling
     res |= ioctl(file, UI_SET_EVBIT, EV_ABS);
-    res |= setup_axis(file, ABS_X, min, max);
-    res |= setup_axis(file, ABS_Y, min, max);
-    res |= setup_axis(file, ABS_RX, min, max);
-    res |= setup_axis(file, ABS_RY, min, max);
+    res |= setup_axis(file, ABS_X, fuzz, flat);
+    res |= setup_axis(file, ABS_Y, fuzz, flat);
+    res |= setup_axis(file, ABS_RX, fuzz, flat);
+    res |= setup_axis(file, ABS_RY, fuzz, flat);
     if (res) {
         fprintf(stderr, "One or more errors setting up joystick axes\n");
         return -1;

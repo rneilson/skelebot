@@ -3,6 +3,9 @@
 
 #include <stdint.h>
 
+#define JOYSTICK_AXIS_MIN -32767
+#define JOYSTICK_AXIS_MAX 32767
+
 typedef struct {
     int16_t l_x_axis;
     int16_t l_y_axis;
@@ -12,7 +15,7 @@ typedef struct {
     uint8_t r_button;
 } JoystickState;
 
-static int setup_axis(int file, unsigned axis, int min, int max);
+static int setup_axis(int file, unsigned axis, int fuzz, int flat);
 
 // Creates and initializes a new joystick device with provided `min` and `max`
 // values. Returns file descriptor on success, or -1 on error.

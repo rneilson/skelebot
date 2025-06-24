@@ -18,8 +18,11 @@
 
 #define UPDATE_MICROSECONDS 50000 // µs (20Hz)
 
-#define JOYSTICK_AXIS_MIN -4096
-#define JOYSTICK_AXIS_MAX 4096
+#define JOYSTICK_AXIS_FUZZ 16
+#define JOYSTICK_AXIS_FLAT 16
+
+#define JOYSTICK_AXIS_I2C_MIN -4095
+#define JOYSTICK_AXIS_I2C_MAX 4095
 
 #define I2C_BUS_PATH "/dev/i2c-8" // TODO: make cmdline arg
 
@@ -49,6 +52,25 @@ void dev_file_closer() {
     }
 }
 
+// Scale I2C joystick values to expected values for evdev joysticks
+int16_t scale_i2c_axis_value(int16_t value) {
+    int32_t scaled;
+    if (value > 0) {
+        scaled = (int32_t)value * JOYSTICK_AXIS_MAX / JOYSTICK_AXIS_I2C_MAX;
+    } else if (value < 0) {
+        scaled = (int32_t)value * JOYSTICK_AXIS_MIN / JOYSTICK_AXIS_I2C_MIN;
+    } else {
+        scaled = (int32_t)value;
+    }
+    if (scaled > JOYSTICK_AXIS_MAX) {
+        return JOYSTICK_AXIS_MAX;
+    }
+    if (scaled < JOYSTICK_AXIS_MIN) {
+        return JOYSTICK_AXIS_MIN;
+    }
+    return (int16_t)scaled;
+}
+
 int main(int argc, char *argv[]) {
     // I2C-side setup
     i2c_file = open_i2c_device(I2C_BUS_PATH);
@@ -67,7 +89,7 @@ int main(int argc, char *argv[]) {
     I2CJoystickValues right_stick = {0, 0, 0};
 
     // Uinput-side setup
-    dev_file = setup_joystick_device(JOYSTICK_AXIS_MIN, JOYSTICK_AXIS_MAX);
+    dev_file = setup_joystick_device(JOYSTICK_AXIS_FUZZ, JOYSTICK_AXIS_FLAT);
     if (dev_file < 0) {
         fprintf(stderr, "Couldn't set up device, exiting...\n");
         exit(1);
@@ -93,12 +115,12 @@ int main(int argc, char *argv[]) {
         }
 
         JoystickState new_state = {
-            .l_x_axis = left_stick.x_axis,
-            .l_y_axis = left_stick.y_axis,
-            .r_x_axis = right_stick.x_axis,
-            .r_y_axis = right_stick.y_axis,
-            .l_button = left_stick.button,
-            .r_button = right_stick.button,
+            .l_x_axis = scale_i2c_axis_value(left_stick.x_axis),
+            .l_y_axis = scale_i2c_axis_value(left_stick.y_axis),
+            .r_x_axis = scale_i2c_axis_value(right_stick.x_axis),
+            .r_y_axis = scale_i2c_axis_value(right_stick.y_axis),
+            .l_button = left_stick.button ? 1 : 0,
+            .r_button = right_stick.button ? 1 : 0,
         };
         // We don't currently actually need the updated bitmap
         if (update_joystick_state(dev_file, &joystick_state, &new_state) < 0) {
