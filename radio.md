@@ -13,8 +13,8 @@
 | 0xF2 |  N/A   | (Reserved)          | N/A              |                         |
 | 0xF3 |    0   | Stop                | None             |                         |
 | 0xF4 |    2   | Drive (L, R)        | L 0-200, R 0-200 | (0, 200) -> (-100, 100) |
-| 0xF5 |  N/A   | (Reserved)          | N/A              |                         |
-| 0xF6 |  N/A   | (Reserved)          | N/A              |                         |
+| 0xF5 |    0   | Center camera       | None             |                         |
+| 0xF6 |    2   | Look (Pan, Tilt)    | P 0-180, T 0-180 | (0, 180) -> (-90, 90)   |
 | 0xF7 |  N/A   | (Reserved)          | N/A              |                         |
 
 ### Telemetry
