@@ -27,6 +27,9 @@ char motor_dir = 'S';
 int8_t motor_left = 0;
 int8_t motor_right = 0;
 
+// Camera values
+int8_t camera_pan = 0;
+int8_t camera_tilt = 0;
 
 void setup() {
     // Serial setup first
@@ -110,10 +113,14 @@ void loop() {
                 motor_dir = getMotorDir(motor_left, motor_right);
                 break;
             case 0xF5:
-                // (Reserved)
+                // Center camera
+                camera_pan = 0;
+                camera_tilt = 0;
                 break;
             case 0xF6:
-                // (Reserved)
+                // Look (pan, tilt)
+                camera_pan = convertCameraAngle(command[1]);
+                camera_tilt = convertCameraAngle(command[2]);
                 break;
             case 0xF7:
                 // (Reserved)
@@ -133,8 +140,9 @@ void loop() {
         } while (current_tick - last_tick >= TICK_MS);
 
         // Output current drive values to serial
-        char output_str[16];
-        sprintf(output_str, "\r%c %+.3i %+.3i", motor_dir, motor_left, motor_right);
+        char output_str[32];
+        sprintf(output_str, "\r%c L %+.3i R %+.3i P %+.3i T %+.3i", motor_dir,
+                motor_left, motor_right, camera_pan, camera_tilt);
         Serial.print(output_str);
     }
 
@@ -184,4 +192,15 @@ char getMotorDir(int8_t left, int8_t right) {
         // Backward (L-, R-)
         return 'B';
     }
+}
+
+int8_t convertCameraAngle(uint8_t value) {
+  if (value < 0)
+    return -90;
+  if (value > 180)
+    return 90;
+  if (value < 90) {
+    return ((int8_t)value - 90);
+  }
+  return (int8_t)(value - 90);
 }
