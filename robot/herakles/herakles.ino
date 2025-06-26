@@ -1,6 +1,7 @@
-#include <Arduino.h>
-#include <RF24.h>
 #include <motordriver_4wd.h>
+#include <RF24.h>
+#include <Wire.h>
+#include <Arduino.h>
 
 #define CE_PIN A0
 #define CSN_PIN A1
@@ -27,6 +28,23 @@ unsigned long last_ack = 0;
 // int8_t motor_left = 0;
 // int8_t motor_right = 0;
 
+// Servo values
+#define SERVO_I2C_ADDR 0x24
+#define SERVO_PWM_FREQ_REG 0x60
+#define SERVO_PWM_FREQ_VAL 50   // 50 Hz
+#define SERVO_PAN_PIN_REG 0x02
+#define SERVO_TILT_PIN_REG 0x03
+#define SERVO_PIN_PWM_MODE 0x20
+#define SERVO_PAN_PWM_REG 0x52
+#define SERVO_TILT_PWM_REG 0x54
+#define SERVO_PAN_MIN 87    // 0°
+#define SERVO_PAN_MID 305   // 90°
+#define SERVO_PAN_MAX 499   // 180°
+// #define SERVO_TILT_MIN 87    // 0°
+#define SERVO_TILT_MIN 195   // 45°
+#define SERVO_TILT_MID 305   // 90°
+#define SERVO_TILT_MAX 394   // 135°
+// #define SERVO_TILT_MAX 499   // 180°
 
 void setup() {
     MOTOR.init();
@@ -34,6 +52,33 @@ void setup() {
     // Set battery pin as input and use external voltage ref
     analogReference(EXTERNAL);
     pinMode(BATT_PIN, INPUT);
+
+    // Setup I2C for servo control
+    Wire.begin();
+    writeI2CRegisterWord(SERVO_PWM_FREQ_REG, SERVO_PWM_FREQ_VAL);
+    writeI2CRegisterWord(SERVO_PAN_PWM_REG, SERVO_PAN_MID);
+    writeI2CRegisterWord(SERVO_TILT_PWM_REG, SERVO_TILT_MID);
+    writeI2CRegisterByte(SERVO_PAN_PIN_REG, SERVO_PIN_PWM_MODE);
+    writeI2CRegisterByte(SERVO_TILT_PIN_REG, SERVO_PIN_PWM_MODE);
+
+    // Initial servo wakeup stretching
+    delay(400);
+    setCameraPanAngle(0);
+    delay(400);
+    setCameraPanAngle(90);
+    delay(400);
+    setCameraPanAngle(180);
+    delay(400);
+    setCameraPanAngle(90);
+    delay(400);
+    setCameraTiltAngle(0);
+    delay(400);
+    setCameraTiltAngle(90);
+    delay(400);
+    setCameraTiltAngle(180);
+    delay(400);
+    setCameraTiltAngle(90);
+    delay(400);
 
     // Radio init
     if (!radio.begin()) {
@@ -96,10 +141,14 @@ void loop() {
                 setRightMotorSpeed(command[2]);
                 break;
             case 0xF5:
-                // (Reserved)
+                // Center camera
+                setCameraPanAngle(90);
+                setCameraTiltAngle(90);
                 break;
-            case 0xF6:
-                // (Reserved)
+                case 0xF6:
+                // Look (pan, tilt)
+                setCameraPanAngle(command[1]);
+                setCameraTiltAngle(command[2]);
                 break;
             case 0xF7:
                 // (Reserved)
@@ -131,8 +180,64 @@ void loop() {
         ack[1] = voltage_bytes[1];
         ack[2] = voltage_bytes[0];
 
+        // TODO: queue up ack payloads
         radio.writeAckPayload(0, ack, 3);
     }
+
+    // TODO: write ack payload(s) and drain queue if successful
+}
+
+bool writeI2CRegisterByte(uint8_t reg, uint8_t value) {
+    Wire.beginTransmission(SERVO_I2C_ADDR);
+    Wire.write(reg);
+    Wire.write(value);
+    return Wire.endTransmission() == 0;
+}
+
+bool writeI2CRegisterWord(uint8_t reg, uint16_t value) {
+    Wire.beginTransmission(SERVO_I2C_ADDR);
+    Wire.write(reg);
+    Wire.write((uint8_t *)&value, sizeof(value));
+    return Wire.endTransmission() == 0;
+}
+
+uint16_t mapCameraAngle(uint16_t angle, uint16_t in_min, uint16_t in_max, uint16_t out_min, uint16_t out_max) {
+    return (angle - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
+}
+
+bool setCameraAngle(uint8_t reg, uint8_t angle, uint16_t min, uint16_t mid, uint16_t max) {
+    uint16_t value;
+
+    if (angle > 180) {
+        angle = 180;
+    }
+    // Invert because both servos turn backwards
+    angle = 180 - angle;
+
+    // Slightly complex mapping because the midpoint of the servo range isn't strictly the
+    // arithmetic mean of min and max...
+    if (angle == 0) {
+        value = min;
+    } else if (angle < 90) {
+        value = mapCameraAngle(angle, 0, 90, min, mid);
+    } else if (angle == 90) {
+        value = mid;
+    } else if (angle < 180) {
+        value = mapCameraAngle(angle, 90, 180, mid, max);
+    } else {
+        value = max;
+    }
+
+    // Now write the change
+    return writeI2CRegisterWord(reg, value);
+}
+
+bool setCameraPanAngle(uint8_t angle) {
+    return setCameraAngle(SERVO_PAN_PWM_REG, angle, SERVO_PAN_MIN, SERVO_PAN_MID, SERVO_PAN_MAX);
+}
+
+bool setCameraTiltAngle(uint8_t angle) {
+    return setCameraAngle(SERVO_TILT_PWM_REG, angle, SERVO_TILT_MIN, SERVO_TILT_MID, SERVO_TILT_MAX);
 }
 
 uint8_t motorSpeedCeiling(uint8_t value) {
