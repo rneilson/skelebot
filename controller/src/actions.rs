@@ -8,12 +8,28 @@ use crossterm::event::KeyEvent;
 
 pub const RECORD_TICKS_INTERVAL: Duration = Duration::from_secs(2);
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum ControlSpeed {
+    Slow,
+    Fast,
+}
+
+impl ToString for ControlSpeed {
+    fn to_string(&self) -> String {
+        match self {
+            Self::Fast => String::from("Fast"),
+            Self::Slow => String::from("Slow"),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ControlState {
     pub throttle: i16,
     pub steering: i16,
     pub pan: i16,
     pub tilt: i16,
+    pub move_speed: ControlSpeed,
 }
 
 impl ControlState {
@@ -23,6 +39,7 @@ impl ControlState {
             steering: 0,
             pan: 0,
             tilt: 0,
+            move_speed: ControlSpeed::Slow,
         }
     }
 
@@ -61,10 +78,14 @@ impl ControlState {
             let right = t - (t.abs() * s);
             (left, right)
         };
-        let m = f64::max(left.abs(), right.abs()).max(1.0);
+        let max = f64::max(left.abs(), right.abs()).max(1.0);
+        let factor = match self.move_speed {
+            ControlSpeed::Slow => 50.0,
+            ControlSpeed::Fast => 100.0,
+        };
 
-        let left = (100.0 * left / m).clamp(-100.0, 100.0) as i8;
-        let right = (100.0 * right / m).clamp(-100.0, 100.0) as i8;
+        let left = (factor * left / max).clamp(-factor, factor) as i8;
+        let right = (factor * right / max).clamp(-factor, factor) as i8;
 
         (left, right)
     }
@@ -91,10 +112,11 @@ pub struct ThreadMsg {
 pub struct StickPosition {
     pub x: i16,
     pub y: i16,
+    pub toggle: bool,
 }
 
 #[derive(Clone, Debug)]
-pub struct StickPositions(pub StickPosition, pub StickPosition);
+pub struct StickValues(pub StickPosition, pub StickPosition);
 
 #[derive(Debug)]
 pub struct BatteryVoltage(pub u16);
@@ -111,7 +133,7 @@ pub enum Action {
     Error(ThreadMsg),
     Fatal(ThreadMsg),
     KeyPress(KeyEvent),
-    StickUpdate(StickPositions),
+    StickUpdate(StickValues),
     BatteryUpdate(BatteryVoltage),
 }
 

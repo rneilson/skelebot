@@ -4,12 +4,11 @@ use std::sync::mpsc::Sender;
 use std::thread::sleep;
 use std::time::{Duration, Instant};
 
-use evdev::{AbsoluteAxisCode, Device, EventSummary, InputEvent};
+use evdev::{AbsoluteAxisCode, Device, EventSummary, InputEvent, KeyCode};
 use nix::sys::epoll::{Epoll, EpollCreateFlags, EpollEvent, EpollFlags, EpollTimeout};
 
 use crate::actions::{
-    record_ticks_for_period, send_error_message, send_message,
-    Action, StickPosition, StickPositions,
+    record_ticks_for_period, send_error_message, send_message, Action, StickPosition, StickValues,
     RECORD_TICKS_INTERVAL,
 };
 
@@ -120,8 +119,16 @@ impl StickDevice {
             return Ok(Some(StickDevice {
                 device,
                 epoll,
-                left: StickPosition { x: 0, y: 0 },
-                right: StickPosition { x: 0, y: 0 },
+                left: StickPosition {
+                    x: 0,
+                    y: 0,
+                    toggle: false,
+                },
+                right: StickPosition {
+                    x: 0,
+                    y: 0,
+                    toggle: false,
+                },
             }));
         }
         Ok(None)
@@ -134,7 +141,7 @@ impl StickDevice {
             .to_owned()
     }
 
-    pub fn update_position(&mut self) -> Result<StickPositions, io::Error> {
+    pub fn update_position(&mut self) -> Result<StickValues, io::Error> {
         let mut events = [EpollEvent::empty(); 2];
         let max_wait = EpollTimeout::try_from(MAX_WAIT).unwrap();
         self.epoll.wait(&mut events, max_wait)?;
@@ -153,7 +160,7 @@ impl StickDevice {
             }
         }
 
-        Ok(StickPositions(self.left.clone(), self.right.clone()))
+        Ok(StickValues(self.left.clone(), self.right.clone()))
     }
 
     fn process_event(l_pos: &mut StickPosition, r_pos: &mut StickPosition, event: InputEvent) {
@@ -166,6 +173,11 @@ impl StickDevice {
                 // Invert Y axis
                 l_pos.y = clamp_with_deadzone(value).saturating_neg();
             }
+            EventSummary::Key(_, KeyCode::BTN_THUMBL, value) => {
+                if value > 0 {
+                    l_pos.toggle = !l_pos.toggle;
+                }
+            }
             EventSummary::AbsoluteAxis(_, AbsoluteAxisCode::ABS_RX, value) => {
                 // Use X axis as-is
                 r_pos.x = clamp_with_deadzone(value);
@@ -174,6 +186,12 @@ impl StickDevice {
                 // Invert Y axis
                 // TODO: add flag to "invert" (ie *not* invert) Y axis
                 r_pos.y = clamp_with_deadzone(value).saturating_neg();
+            }
+            EventSummary::Key(_, KeyCode::BTN_THUMBR, value) => {
+                // Invert button value, evdev is confusingly backward (ie 0 is pressed)
+                if value == 0 {
+                    r_pos.toggle = !r_pos.toggle;
+                }
             }
             _ => {}
         }

@@ -20,6 +20,8 @@ mod ui;
 use actions::{Action, ControlState, StickPosition};
 use ui::UIUpdate;
 
+use crate::actions::ControlSpeed;
+
 fn main() -> io::Result<()> {
     terminal::enable_raw_mode()?;
     write!(io::stdout(), "Starting up...\r\n")?;
@@ -97,13 +99,13 @@ fn handle_actions(
                         );
                     }
                     Action::KeyPress(key_event) => {
-                        let control_state = {
-                            let control_state = control_state_mutex.lock().unwrap();
-                            control_state.clone()
+                        let prev_state = {
+                            let prev_state = control_state_mutex.lock().unwrap();
+                            prev_state.clone()
                         };
-                        match handle_keypress_event(control_state, key_event) {
+                        match handle_keypress_event(prev_state, key_event) {
                             Some(control_state) => {
-                                {
+                                if control_state != prev_state {
                                     let mut stored_state = control_state_mutex.lock().unwrap();
                                     *stored_state = control_state;
                                 }
@@ -147,10 +149,8 @@ fn handle_actions(
 
 /// Returns a modified control state if arrow keys are pressed, or None if the quit
 /// key ('q' at present) is pressed
-fn handle_keypress_event(
-    mut control_state: ControlState,
-    key_event: KeyEvent,
-) -> Option<ControlState> {
+fn handle_keypress_event(prev_state: ControlState, key_event: KeyEvent) -> Option<ControlState> {
+    let mut control_state = prev_state.clone();
     match key_event.code {
         // Quit on 'q'
         KeyCode::Char('q') => {
@@ -200,12 +200,18 @@ fn handle_keypress_event(
 fn handle_stick_positions(move_pos: StickPosition, view_pos: StickPosition) -> ControlState {
     // Convert stick position to control state
     // At present this is a simple mapping of Y axis to throttle
-    // and X axis to steering
+    // and X axis to steering, except the movement speed toggle
+    let move_speed = if move_pos.toggle {
+        ControlSpeed::Fast
+    } else {
+        ControlSpeed::Slow
+    };
     let control_state = ControlState {
         throttle: move_pos.y,
         steering: move_pos.x,
         pan: view_pos.x,
         tilt: view_pos.y,
+        move_speed: move_speed,
     };
     control_state.trim()
 }

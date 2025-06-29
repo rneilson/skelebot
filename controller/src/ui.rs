@@ -13,7 +13,8 @@ use ratatui::widgets::{
 };
 
 use crate::actions::{
-    record_ticks_for_period, Action, BatteryVoltage, ControlState, ThreadMsg, RECORD_TICKS_INTERVAL,
+    record_ticks_for_period, Action, BatteryVoltage, ControlSpeed, ControlState, ThreadMsg,
+    RECORD_TICKS_INTERVAL,
 };
 
 const MESSAGE_LINES: u16 = 5;
@@ -146,13 +147,14 @@ pub fn draw_ui(rx: Receiver<UIUpdate>, tx: Sender<Action>, exit_flag: &AtomicBoo
 fn render_ui(frame: &mut Frame, ui_state: &UIState) {
     // Extracted from joystick position
     let (left_val, right_val) = ui_state.control_state.as_tank_drive();
+    let move_speed = ui_state.control_state.move_speed;
     let (pan_val, tilt_val) = ui_state.control_state.as_camera_angles();
     let voltage = ui_state.battery_voltage.as_float();
 
     let outer_layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints(vec![
-            Constraint::Min(20),
+            Constraint::Min(23),
             Constraint::Length(MESSAGE_LINES + 2),
         ])
         .split(frame.area());
@@ -160,7 +162,7 @@ fn render_ui(frame: &mut Frame, ui_state: &UIState) {
         .direction(Direction::Horizontal)
         .constraints(vec![
             Constraint::Length(14),
-            Constraint::Min(20),
+            Constraint::Min(23),
             Constraint::Length(14),
         ])
         .split(outer_layout[0]);
@@ -176,6 +178,9 @@ fn render_ui(frame: &mut Frame, ui_state: &UIState) {
         Line::from(""),
         Line::from("Steering"),
         Line::from(ui_state.control_state.steering.to_string()),
+        Line::from(""),
+        Line::from("Mode"),
+        Line::from(move_speed.to_string()).style(move_speed_style(move_speed)),
         Line::from(""),
         Line::from("Left"),
         Line::from(format!("{}%", left_val)).style(tank_drive_style(left_val)),
@@ -298,6 +303,13 @@ fn tank_drive_value_style(val: i8) -> Style {
         Style::default().white().on_white()
     } else {
         Style::default().cyan().on_cyan()
+    }
+}
+
+fn move_speed_style(val: ControlSpeed) -> Style {
+    match val {
+        ControlSpeed::Fast => Style::default().green(),
+        ControlSpeed::Slow => Style::default().light_yellow(),
     }
 }
 
