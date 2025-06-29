@@ -14,6 +14,15 @@ pub enum ControlSpeed {
     Fast,
 }
 
+impl ControlSpeed {
+    pub fn toggle(self) -> Self {
+        match self {
+            Self::Fast => Self::Slow,
+            Self::Slow => Self::Fast,
+        }
+    }
+}
+
 impl ToString for ControlSpeed {
     fn to_string(&self) -> String {
         match self {

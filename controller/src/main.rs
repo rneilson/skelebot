@@ -190,6 +190,10 @@ fn handle_keypress_event(prev_state: ControlState, key_event: KeyEvent) -> Optio
             control_state.throttle = 0;
             control_state.steering = 0;
         }
+        // Cycle through speed modes
+        KeyCode::Char('m') => {
+            control_state.move_speed = control_state.move_speed.toggle();
+        }
         // Ignore others
         _ => {}
     }
