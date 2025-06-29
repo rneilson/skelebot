@@ -17,10 +17,13 @@ mod radio;
 mod term;
 mod ui;
 
-use actions::{Action, ControlState, StickPosition};
+use actions::{Action, ControlState, StickValues};
 use ui::UIUpdate;
 
-use crate::actions::ControlSpeed;
+struct ToggleButtons {
+    r#move: bool,
+    view: bool,
+}
 
 fn main() -> io::Result<()> {
     terminal::enable_raw_mode()?;
@@ -76,6 +79,11 @@ fn handle_actions(
     control_state_mutex: Arc<Mutex<ControlState>>,
 ) -> Result<(), Box<dyn Error>> {
     let max_wait = Duration::from_millis(20);
+    let mut buttons = ToggleButtons {
+        r#move: false,
+        view: false,
+    };
+
     'listener: loop {
         match rx.recv_timeout(max_wait) {
             Ok(action) => {
@@ -103,7 +111,7 @@ fn handle_actions(
                             let prev_state = control_state_mutex.lock().unwrap();
                             prev_state.clone()
                         };
-                        match handle_keypress_event(prev_state, key_event) {
+                        match handle_keypress_event(&prev_state, key_event) {
                             Some(control_state) => {
                                 if control_state != prev_state {
                                     let mut stored_state = control_state_mutex.lock().unwrap();
@@ -118,8 +126,13 @@ fn handle_actions(
                         }
                     }
                     Action::StickUpdate(stick_pos) => {
-                        let control_state = handle_stick_positions(stick_pos.0, stick_pos.1);
-                        {
+                        let prev_state = {
+                            let prev_state = control_state_mutex.lock().unwrap();
+                            prev_state.clone()
+                        };
+                        let control_state =
+                            handle_stick_positions(&prev_state, &mut buttons, stick_pos);
+                        if control_state != prev_state {
                             let mut stored_state = control_state_mutex.lock().unwrap();
                             *stored_state = control_state;
                         }
@@ -149,7 +162,7 @@ fn handle_actions(
 
 /// Returns a modified control state if arrow keys are pressed, or None if the quit
 /// key ('q' at present) is pressed
-fn handle_keypress_event(prev_state: ControlState, key_event: KeyEvent) -> Option<ControlState> {
+fn handle_keypress_event(prev_state: &ControlState, key_event: KeyEvent) -> Option<ControlState> {
     let mut control_state = prev_state.clone();
     match key_event.code {
         // Quit on 'q'
@@ -201,15 +214,23 @@ fn handle_keypress_event(prev_state: ControlState, key_event: KeyEvent) -> Optio
 }
 
 /// Converts a joystick position to a new control state
-fn handle_stick_positions(move_pos: StickPosition, view_pos: StickPosition) -> ControlState {
+fn handle_stick_positions(
+    prev_state: &ControlState,
+    buttons: &mut ToggleButtons,
+    stick_pos: StickValues,
+) -> ControlState {
     // Convert stick position to control state
     // At present this is a simple mapping of Y axis to throttle
     // and X axis to steering, except the movement speed toggle
-    let move_speed = if move_pos.toggle {
-        ControlSpeed::Fast
-    } else {
-        ControlSpeed::Slow
-    };
+    let StickValues(move_pos, view_pos) = stick_pos;
+    let mut move_speed = prev_state.move_speed;
+
+    if move_pos.button && !buttons.r#move {
+        move_speed = move_speed.toggle();
+    }
+    buttons.r#move = move_pos.button;
+    buttons.view = view_pos.button;
+
     let control_state = ControlState {
         throttle: move_pos.y,
         steering: move_pos.x,

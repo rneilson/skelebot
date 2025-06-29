@@ -121,7 +121,7 @@ pub struct ThreadMsg {
 pub struct StickPosition {
     pub x: i16,
     pub y: i16,
-    pub toggle: bool,
+    pub button: bool,
 }
 
 #[derive(Clone, Debug)]

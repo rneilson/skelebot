@@ -122,12 +122,12 @@ impl StickDevice {
                 left: StickPosition {
                     x: 0,
                     y: 0,
-                    toggle: false,
+                    button: false,
                 },
                 right: StickPosition {
                     x: 0,
                     y: 0,
-                    toggle: false,
+                    button: false,
                 },
             }));
         }
@@ -174,9 +174,7 @@ impl StickDevice {
                 l_pos.y = clamp_with_deadzone(value).saturating_neg();
             }
             EventSummary::Key(_, KeyCode::BTN_THUMBL, value) => {
-                if value > 0 {
-                    l_pos.toggle = !l_pos.toggle;
-                }
+                l_pos.button = value != 0;
             }
             EventSummary::AbsoluteAxis(_, AbsoluteAxisCode::ABS_RX, value) => {
                 // Use X axis as-is
@@ -188,10 +186,7 @@ impl StickDevice {
                 r_pos.y = clamp_with_deadzone(value).saturating_neg();
             }
             EventSummary::Key(_, KeyCode::BTN_THUMBR, value) => {
-                // Invert button value, evdev is confusingly backward (ie 0 is pressed)
-                if value == 0 {
-                    r_pos.toggle = !r_pos.toggle;
-                }
+                r_pos.button = value != 0;
             }
             _ => {}
         }
