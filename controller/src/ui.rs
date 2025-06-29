@@ -34,7 +34,7 @@ struct UIState {
 impl UIState {
     fn new() -> Self {
         Self {
-            control_state: ControlState::from(0),
+            control_state: ControlState::new(),
             battery_voltage: BatteryVoltage(0),
             messages: vec![].into(),
         }

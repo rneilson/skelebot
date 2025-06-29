@@ -1,10 +1,10 @@
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::Sender;
+use std::sync::{Arc, Mutex};
 use std::thread::sleep;
 use std::time::{Duration, Instant};
 
 use crazyradio::{self, Channel, Crazyradio, Datarate};
-use nix::libc::stat;
 
 use crate::actions::{
     record_ticks_for_period, send_error_message, send_message, Action, BatteryVoltage,
@@ -18,7 +18,11 @@ enum SendStateType {
 
 const RADIO_LOOP_INTERVAL: Duration = Duration::from_millis(10);
 
-pub fn radio_comms(tx: Sender<Action>, control_state_atomic: &AtomicU64, exit_flag: &AtomicBool) {
+pub fn radio_comms(
+    tx: Sender<Action>,
+    control_state_mutex: Arc<Mutex<ControlState>>,
+    exit_flag: &AtomicBool,
+) {
     let mut prev_marker = Instant::now();
     let mut next_marker = prev_marker + RECORD_TICKS_INTERVAL;
     let mut ticks = 0_u32;
@@ -45,7 +49,11 @@ pub fn radio_comms(tx: Sender<Action>, control_state_atomic: &AtomicU64, exit_fl
             }
         }
         if let Some(ref mut cr) = radio {
-            match send_state_update(cr, control_state_atomic, &state_type) {
+            let control_state = {
+                let control_state = control_state_mutex.lock().unwrap();
+                control_state.clone()
+            };
+            match send_state_update(cr, control_state, &state_type) {
                 Ok(ack_data) => {
                     receive_ack_data(&tx, ack_data);
                 }
@@ -126,10 +134,9 @@ fn map_angular_value(value: i8) -> u8 {
 
 fn send_state_update(
     cr: &mut Crazyradio,
-    state: &AtomicU64,
+    control_state: ControlState,
     state_type: &SendStateType,
 ) -> Result<[u8; 4], crazyradio::Error> {
-    let control_state = ControlState::from(state.load(Ordering::Relaxed));
     let mut command: [u8; 3] = [0; 3];
     let mut command_len: usize = 1;
 

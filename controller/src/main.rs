@@ -2,8 +2,9 @@
 
 use std::error::Error;
 use std::io::{self, Write};
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
@@ -23,7 +24,7 @@ fn main() -> io::Result<()> {
     terminal::enable_raw_mode()?;
     write!(io::stdout(), "Starting up...\r\n")?;
 
-    let control_state_atomic = AtomicU64::new(0);
+    let control_state_mutex = Arc::new(Mutex::new(ControlState::new()));
     let exit_flag = AtomicBool::new(false);
     let mut err_msg: Option<String> = None;
 
@@ -41,7 +42,7 @@ fn main() -> io::Result<()> {
             joystick::collect_joystick_events(j_tx, &exit_flag);
         });
         s.spawn(|| {
-            radio::radio_comms(r_tx, &control_state_atomic, &exit_flag);
+            radio::radio_comms(r_tx, Arc::clone(&control_state_mutex), &exit_flag);
         });
         s.spawn(|| {
             term::collect_terminal_events(t_tx, &exit_flag);
@@ -52,7 +53,7 @@ fn main() -> io::Result<()> {
 
         // Loop over channel rx and process events
         // Set error message and exit flag on any error, then allow threads to end
-        if let Err(e) = handle_actions(rx, ui_tx, &exit_flag, &control_state_atomic) {
+        if let Err(e) = handle_actions(rx, ui_tx, &exit_flag, Arc::clone(&control_state_mutex)) {
             err_msg = Some(format!("{}", e));
             exit_flag.store(true, Ordering::Relaxed);
         }
@@ -70,7 +71,7 @@ fn handle_actions(
     rx: Receiver<Action>,
     ui_tx: Sender<UIUpdate>,
     exit_flag: &AtomicBool,
-    control_state_atomic: &AtomicU64,
+    control_state_mutex: Arc<Mutex<ControlState>>,
 ) -> Result<(), Box<dyn Error>> {
     let max_wait = Duration::from_millis(20);
     'listener: loop {
@@ -96,12 +97,16 @@ fn handle_actions(
                         );
                     }
                     Action::KeyPress(key_event) => {
-                        let control_state =
-                            ControlState::from(control_state_atomic.load(Ordering::Relaxed));
+                        let control_state = {
+                            let control_state = control_state_mutex.lock().unwrap();
+                            control_state.clone()
+                        };
                         match handle_keypress_event(control_state, key_event) {
                             Some(control_state) => {
-                                control_state_atomic
-                                    .store(control_state.as_u64(), Ordering::Relaxed);
+                                {
+                                    let mut stored_state = control_state_mutex.lock().unwrap();
+                                    *stored_state = control_state;
+                                }
                                 ui_tx.send(UIUpdate::Control(control_state))?;
                                 // write!(io::stdout(), "Control state: {:?}\r\n", control_state)?;
                             }
@@ -112,7 +117,10 @@ fn handle_actions(
                     }
                     Action::StickUpdate(stick_pos) => {
                         let control_state = handle_stick_positions(stick_pos.0, stick_pos.1);
-                        control_state_atomic.store(control_state.as_u64(), Ordering::Relaxed);
+                        {
+                            let mut stored_state = control_state_mutex.lock().unwrap();
+                            *stored_state = control_state;
+                        }
                         ui_tx.send(UIUpdate::Control(control_state))?;
                         // write!(io::stdout(), "Control state: {:?}\r\n", control_state)?;
                     }

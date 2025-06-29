@@ -8,7 +8,7 @@ use crossterm::event::KeyEvent;
 
 pub const RECORD_TICKS_INTERVAL: Duration = Duration::from_secs(2);
 
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug)]
 pub struct ControlState {
     pub throttle: i16,
     pub steering: i16,
@@ -17,16 +17,13 @@ pub struct ControlState {
 }
 
 impl ControlState {
-    pub fn as_u64(&self) -> u64 {
-        let left_high = (self.throttle as u16) as u32;
-        let left_low = (self.steering as u16) as u32;
-        let left = ((left_high << 16) | left_low) as u64;
-
-        let right_high = (self.pan as u16) as u32;
-        let right_low = (self.tilt as u16) as u32;
-        let right = ((right_high << 16) | right_low) as u64;
-
-        (left << 32) | right
+    pub fn new() -> Self {
+        Self {
+            throttle: 0,
+            steering: 0,
+            pan: 0,
+            tilt: 0,
+        }
     }
 
     pub fn trim(mut self) -> Self {
@@ -84,19 +81,6 @@ impl ControlState {
     }
 }
 
-impl From<u64> for ControlState {
-    fn from(value: u64) -> Self {
-        let left = (value >> 32) as u32;
-        let right = (value & 0xffffffff) as u32;
-        Self {
-            throttle: (left >> 16) as i16,
-            steering: (left & 0xffff) as i16,
-            pan: (right >> 16) as i16,
-            tilt: (right & 0xffff) as i16,
-        }
-    }
-}
-
 #[derive(Debug)]
 pub struct ThreadMsg {
     pub name: String,
@@ -110,7 +94,7 @@ pub struct StickPosition {
 }
 
 #[derive(Clone, Debug)]
-pub struct StickPositions (pub StickPosition, pub StickPosition);
+pub struct StickPositions(pub StickPosition, pub StickPosition);
 
 #[derive(Debug)]
 pub struct BatteryVoltage(pub u16);
