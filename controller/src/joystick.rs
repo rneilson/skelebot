@@ -181,9 +181,10 @@ impl StickDevice {
                 r_pos.x = clamp_with_deadzone(value);
             }
             EventSummary::AbsoluteAxis(_, AbsoluteAxisCode::ABS_RY, value) => {
-                // Invert Y axis
-                // TODO: add flag to "invert" (ie *not* invert) Y axis
-                r_pos.y = clamp_with_deadzone(value).saturating_neg();
+                // Don't invert Y axis, ie let it work "inverted"
+                // TODO: add flag to not "invert" (ie *do* invert) Y axis
+                r_pos.y = clamp_with_deadzone(value);
+                // r_pos.y = clamp_with_deadzone(value).saturating_neg();
             }
             EventSummary::Key(_, KeyCode::BTN_THUMBR, value) => {
                 r_pos.button = value != 0;
