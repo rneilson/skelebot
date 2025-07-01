@@ -76,16 +76,10 @@ impl ControlState {
         let t = (self.throttle as f64) / (i16::MAX as f64);
         let s = (self.steering as f64) / (i16::MAX as f64);
 
-        // If in fast mode, cut steering value in half to prevent over-turning
-        let s = match self.move_speed {
-            ControlSpeed::Slow => s,
-            ControlSpeed::Fast => s / 2.0,
-        };
-
         let (left, right) = if t == 0.0 {
             // Use tank drive when no throttle applied to allow turning in-place
-            let left = s;
-            let right = -s;
+            let left = t + s;
+            let right = t - s;
             (left, right)
         } else {
             // Use constant curvature when throttle is applied
