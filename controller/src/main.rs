@@ -10,6 +10,7 @@ use std::time::Duration;
 
 use crossterm::event::{KeyCode, KeyEvent};
 use crossterm::terminal;
+use dbus::blocking::Connection;
 
 mod actions;
 mod joystick;
@@ -28,6 +29,39 @@ struct ToggleButtons {
 fn main() -> io::Result<()> {
     terminal::enable_raw_mode()?;
     write!(io::stdout(), "Starting up...\r\n")?;
+
+    // Prevent screen blanking and locking via d-bus call
+    let mut dbus_conn: Option<Connection> = None;
+    let mut dbus_cookie: Option<u32> = None;
+    match Connection::new_session() {
+        Ok(conn) => {
+            dbus_conn = Some(conn);
+        }
+        Err(e) => {
+            write!(io::stderr(), "Error creating D-Bus connection: {}\r\n", e)?;
+        }
+    }
+    if let Some(ref conn) = dbus_conn {
+        let proxy = conn.with_proxy(
+            "org.freedesktop.ScreenSaver",
+            "/org/freedesktop/ScreenSaver",
+            Duration::from_millis(5_000),
+        );
+        let result: Result<(u32,), dbus::Error> = proxy.method_call(
+            "org.freedesktop.ScreenSaver",
+            "Inhibit",
+            ("controller.rs", "wake lock enabled"),
+        );
+        match result {
+            Ok((cookie,)) => {
+                dbus_cookie = Some(cookie);
+                write!(io::stdout(), "Screensaver inhibited\r\n")?;
+            }
+            Err(e) => {
+                write!(io::stderr(), "Error inhibiting screensaver: {}\r\n", e)?;
+            }
+        }
+    }
 
     let control_state_mutex = Arc::new(Mutex::new(ControlState::new()));
     let exit_flag = AtomicBool::new(false);
@@ -66,6 +100,26 @@ fn main() -> io::Result<()> {
 
     if let Some(msg) = err_msg {
         write!(io::stderr(), "{0}\r\n", msg)?;
+    }
+
+    if let Some(ref conn) = dbus_conn {
+        if let Some(cookie) = dbus_cookie {
+            let proxy = conn.with_proxy(
+                "org.freedesktop.ScreenSaver",
+                "/org/freedesktop/ScreenSaver",
+                Duration::from_millis(5_000),
+            );
+            let result: Result<(), dbus::Error> =
+                proxy.method_call("org.freedesktop.ScreenSaver", "UnInhibit", (cookie,));
+            if let Err(e) = result {
+                write!(io::stderr(), "Error uninhibiting screensaver: {}\r\n", e)?;
+            }
+        } else {
+            write!(
+                io::stderr(),
+                "DBus connection present but no cookie for uninhibit call\r\n"
+            )?;
+        }
     }
 
     write!(io::stdout(), "Shutting down...\r\n")?;
