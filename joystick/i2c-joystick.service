@@ -1,0 +1,15 @@
+[Unit]
+Description=I2C Joystick Driver
+After=multi-user.target
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+#User=root
+Type=idle
+ExecStart=/usr/local/bin/joystick-daemon
+Restart=on-failure
+RestartSec=3s
+
+[Install]
+WantedBy=multi-user.target
