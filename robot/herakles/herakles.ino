@@ -18,8 +18,10 @@ uint8_t channel = 76;   // Default for RF24 lib, Crazyradio needs changing
 uint8_t control_addr[6] = {0xE7, 0xE7, 0xE7, 0xE7, 0xE7, 0x00}; // Default for Crazyradio
 
 // Timer values
-#define ACK_MS 50
+#define ACK_PAYLOAD_MS 50
 unsigned long last_ack = 0;
+#define CONN_LOSS_MS 200
+unsigned long last_cmd = 0;
 
 #define BATT_PIN A6
 
@@ -98,6 +100,8 @@ void setup() {
 }
 
 void loop() {
+    bool received_cmd = false;
+
     // First, handle any payload we've received
     // Only one payload received per loop for now, may refactor later
     if (radio.available()) {
@@ -113,6 +117,7 @@ void loop() {
             radio.read(commands[next_head], command_len);
             command_head = next_head;
         }
+        received_cmd = true;
     }
 
     // Potentially process multiple payloads, however
@@ -161,11 +166,22 @@ void loop() {
 
     unsigned long current_tick = millis();
 
-    if (current_tick - last_ack >= ACK_MS) {
+    // If no command received in CONN_LOSS_MS ms, assume connection lost and stop
+    if (received_cmd) {
+        last_cmd = current_tick;
+    }
+    if (current_tick - last_cmd >= CONN_LOSS_MS) {
+        MOTOR.setStop1();
+        MOTOR.setStop2();
+        // This will
+        last_cmd = current_tick;
+    }
+
+    if (current_tick - last_ack >= ACK_PAYLOAD_MS) {
         // Update next ack and stage this one for sending
         do {
-            last_ack += ACK_MS;
-        } while (current_tick - last_ack >= ACK_MS);
+            last_ack += ACK_PAYLOAD_MS;
+        } while (current_tick - last_ack >= ACK_PAYLOAD_MS);
 
         // Get divided battery voltage from ADC6
         // R1 = 430k, R2 = 100k, Vo = Vi * (430000 + 100000) / 100000
