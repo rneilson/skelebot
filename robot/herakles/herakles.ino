@@ -23,7 +23,9 @@ unsigned long last_ack = 0;
 #define CONN_LOSS_MS 200
 unsigned long last_cmd = 0;
 
-#define BATT_PIN A6
+#define MAIN_BATT_PIN A6
+#define AUX_BATT_PIN A2
+#define AUX_EN_PIN 2
 
 // // Motor values
 // char motor_dir = 'S';
@@ -51,9 +53,14 @@ unsigned long last_cmd = 0;
 void setup() {
     MOTOR.init();
 
-    // Set battery pin as input and use external voltage ref
+    // Set battery pins as input and use external voltage ref
     analogReference(EXTERNAL);
-    pinMode(BATT_PIN, INPUT);
+    pinMode(MAIN_BATT_PIN, INPUT);
+    // pinMode(AUX_BATT_PIN, INPUT);
+
+    // TODO: set aux pin low to start
+    // pinMode(AUX_EN_PIN, OUTPUT);
+    // digitalWrite(AUX_EN_PIN, LOW);
 
     // Setup I2C for servo control
     Wire.begin();
@@ -86,8 +93,9 @@ void setup() {
     if (!radio.begin()) {
         while (1) {}
     }
-    // Set PA level low for debug
-    radio.setPALevel(RF24_PA_LOW);
+    // Set PA level high for use
+    // TODO: figure out if/when to set to max
+    radio.setPALevel(RF24_PA_HIGH);
     radio.setDataRate(RF24_250KBPS);
     // Enable dynamic payloads and payload acks
     radio.enableDynamicPayloads();
@@ -97,6 +105,9 @@ void setup() {
     radio.setChannel(channel);
     // Put radio in RX mode
     radio.startListening();
+
+    // TODO: now enable aux
+    // digitalWrite(AUX_EN_PIN, HIGH);
 }
 
 void loop() {
