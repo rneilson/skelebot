@@ -8,6 +8,7 @@ use std::time::{Duration, Instant};
 use crossterm::terminal::{disable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen};
 use crossterm::ExecutableCommand;
 use ratatui::prelude::*;
+use ratatui::text::Span;
 use ratatui::widgets::{
     Axis, Bar, BarChart, BarGroup, Block, Chart, Dataset, GraphType, Paragraph, Wrap,
 };
@@ -175,27 +176,35 @@ fn render_ui(frame: &mut Frame, ui_state: &UIState) {
     let sum_data = vec![
         Line::from("Throttle"),
         Line::from(ui_state.control_state.throttle.to_string()),
-        Line::from(""),
         Line::from("Steering"),
         Line::from(ui_state.control_state.steering.to_string()),
         Line::from(""),
-        Line::from("Mode"),
-        Line::from(move_speed.to_string()).style(move_speed_style(move_speed)),
+        Line::from(vec![
+            Span::from("Mode: "),
+            Span::styled(move_speed.to_string(), move_speed_style(move_speed)),
+        ]),
         Line::from(""),
-        Line::from("Left"),
-        Line::from(format!("{}%", left_val)).style(tank_drive_style(left_val)),
+        Line::from(vec![
+            Span::from("Left:  "),
+            Span::styled(format!("{}%", left_val), tank_drive_style(left_val)),
+        ]),
+        Line::from(vec![
+            Span::from("Right: "),
+            Span::styled(format!("{}%", right_val), tank_drive_style(right_val)),
+        ]),
         Line::from(""),
-        Line::from("Right"),
-        Line::from(format!("{}%", right_val)).style(tank_drive_style(right_val)),
-        Line::from(""),
-        Line::from("Pan"),
-        Line::from(format!("{}°", pan_val)).style(camera_angle_style(pan_val)),
-        Line::from(""),
-        Line::from("Tilt"),
-        Line::from(format!("{}°", tilt_val)).style(camera_angle_style(tilt_val)),
+        Line::from(vec![
+            Span::from("Pan:   "),
+            Span::styled(format!("{}°", pan_val), camera_angle_style(pan_val)),
+        ]),
+        Line::from(vec![
+            Span::from("Tilt:  "),
+            Span::styled(format!("{}°", tilt_val), camera_angle_style(tilt_val)),
+        ]),
         Line::from(""),
         Line::from("Battery"),
-        Line::from(format!("{:.2}V", voltage)),
+        // TODO: style
+        Line::from(format!("Main: {:.2}V", voltage)),
         // TODO: left RPM
         // TODO: right RPM
     ];
