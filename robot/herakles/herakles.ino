@@ -41,9 +41,9 @@ unsigned long last_cmd = 0;
 #define SERVO_PIN_PWM_MODE 0x20
 #define SERVO_PAN_PWM_REG 0x52
 #define SERVO_TILT_PWM_REG 0x54
-#define SERVO_PAN_MIN 87    // 0°
-#define SERVO_PAN_MID 305   // 90°
-#define SERVO_PAN_MAX 499   // 180°
+#define SERVO_PAN_MIN 102   // 0°
+#define SERVO_PAN_MID 310   // 90°
+#define SERVO_PAN_MAX 516   // 180°
 // #define SERVO_TILT_MIN 87    // 0°
 #define SERVO_TILT_MIN 195   // 45°
 #define SERVO_TILT_MID 305   // 90°
