@@ -76,6 +76,12 @@ impl ControlState {
         let t = (self.throttle as f64) / (i16::MAX as f64);
         let s = (self.steering as f64) / (i16::MAX as f64);
 
+        // Trim down steering value in fast mode
+        let s = match self.move_speed {
+            ControlSpeed::Slow => s,
+            ControlSpeed::Fast => 0.5 * s,
+        };
+
         let (left, right) = if t == 0.0 {
             // Use tank drive when no throttle applied to allow turning in-place
             let left = t + s;
