@@ -24,10 +24,10 @@
 | 0xF8 |    0   | No-op               | None             |                         |
 | 0xF9 |  N/A   | (Reserved)          | N/A              |                         |
 | 0xFA |  N/A   | (Reserved)          | N/A              |                         |
-| 0xFB |    2   | Battery voltage     | Voltage (u16 BE) | Vbat / 1024.0           |
-| 0xFC |    2   | Left RPM            | RPM (u16 BE)     |                         |
-| 0xFD |    2   | Right RPM           | RPM (u16 BE)     |                         |
-| 0xFE |  N/A   | (Reserved)          | N/A              |                         |
+| 0xFB |    2   | Battery voltage     | Voltage (u16 BE) | Vbat / 1023.0           |
+| 0xFC |    2   | Battery current     | Current (u16 BE) | Ibat / 1023.0           |
+| 0xFD |    2   | Left RPM            | RPM (u16 BE)     |                         |
+| 0xFE |    2   | Right RPM           | RPM (u16 BE)     |                         |
 | 0xFF |  N/A   | (Reserved)          | N/A              |                         |
 
 ## Radio channels
