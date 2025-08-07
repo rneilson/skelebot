@@ -18,19 +18,20 @@ uint8_t channel = 76;   // Default for RF24 lib, Crazyradio needs changing
 uint8_t control_addr[6] = {0xE7, 0xE7, 0xE7, 0xE7, 0xE7, 0x00}; // Default for Crazyradio
 
 // Timer values
-#define ACK_PAYLOAD_MS 50
-unsigned long last_ack = 0;
 #define CONN_LOSS_MS 200
 unsigned long last_cmd = 0;
+#define ACK_PAYLOAD_MS 50
+unsigned long last_ack = 0;
 
-#define MAIN_BATT_PIN A6
-#define AUX_BATT_PIN A2
-#define AUX_EN_PIN 2
+typedef enum: uint8_t {
+    BATT_VOLTAGE,
+    BATT_CURRENT,
+} AckType;
+AckType next_ack_type = AckType::BATT_VOLTAGE;
 
-// // Motor values
-// char motor_dir = 'S';
-// int8_t motor_left = 0;
-// int8_t motor_right = 0;
+#define BATT_VOLTAGE_PIN A6
+#define BATT_CURRENT_PIN A2
+// #define VTX_EN_PIN 2
 
 // Servo values
 #define SERVO_I2C_ADDR 0x24
@@ -55,12 +56,12 @@ void setup() {
 
     // Set battery pins as input and use external voltage ref
     analogReference(EXTERNAL);
-    pinMode(MAIN_BATT_PIN, INPUT);
-    // pinMode(AUX_BATT_PIN, INPUT);
+    pinMode(BATT_VOLTAGE_PIN, INPUT);
+    pinMode(BATT_CURRENT_PIN, INPUT);
 
     // TODO: set aux pin low to start
-    // pinMode(AUX_EN_PIN, OUTPUT);
-    // digitalWrite(AUX_EN_PIN, LOW);
+    // pinMode(VTX_EN_PIN, OUTPUT);
+    // digitalWrite(VTX_EN_PIN, LOW);
 
     // Setup I2C for servo control
     Wire.begin();
@@ -194,21 +195,40 @@ void loop() {
             last_ack += ACK_PAYLOAD_MS;
         } while (current_tick - last_ack >= ACK_PAYLOAD_MS);
 
-        // Get divided battery voltage from ADC6
-        // R1 = 430k, R2 = 100k, Vo = Vi * (430000 + 100000) / 100000
-        // We have clearance here in terms of int sizes because the
-        // analog value is 10 bits
-        uint16_t voltage = getBatteryVoltage();
-        uint8_t *voltage_bytes = (uint8_t*)&voltage;
-
+        uint16_t ack_value;
         uint8_t ack[3];
-        ack[0] = 0xFB;  // Battery voltage
-        // Convert little-endian to big-endian
-        ack[1] = voltage_bytes[1];
-        ack[2] = voltage_bytes[0];
 
+        if (next_ack_type == AckType::BATT_VOLTAGE) {
+            // Get divided battery voltage from ADC6
+            // R1 = 430k, R2 = 100k, Vo = Vi * (430000 + 100000) / 100000
+            // We have clearance here in terms of int sizes because the
+            // analog value is 10 bits
+            ack_value = getBatteryVoltage();
+            ack[0] = 0xFB;  // Battery voltage
+        } else if (next_ack_type == AckType::BATT_CURRENT) {
+            // Get divided battery-sourced current from ADC
+            ack_value = getBatteryCurrent();
+            ack[0] = 0xFC;  // Battery current
+        }
+
+        // Convert little-endian to big-endian
+        uint8_t *ack_bytes = (uint8_t*)&ack_value;
+        ack[1] = ack_bytes[1];
+        ack[2] = ack_bytes[0];
         // TODO: queue up ack payloads
         radio.writeAckPayload(0, ack, 3);
+
+        // Set next ack payload type
+        switch (next_ack_type) {
+            case AckType::BATT_VOLTAGE:
+                next_ack_type = AckType::BATT_CURRENT;
+                break;
+            case AckType::BATT_CURRENT:
+                next_ack_type = AckType::BATT_VOLTAGE;
+                break;
+            default:
+                break;
+        }
     }
 
     // TODO: write ack payload(s) and drain queue if successful
@@ -306,7 +326,7 @@ uint16_t getBatteryVoltage() {
 
     // Average over 4 readings
     for (char i = 0; i < 4; i++) {
-        voltage += analogRead(A6);
+        voltage += analogRead(BATT_VOLTAGE_PIN);
     }
     voltage = voltage / 4;
 
@@ -319,4 +339,25 @@ uint16_t getBatteryVoltage() {
     voltage = voltage * 53 / 2;
 
     return voltage;
+}
+
+uint16_t getBatteryCurrent() {
+    int16_t reading = 0;
+
+    // Average over 4 readings
+    for (char i = 0; i < 4; i++) {
+        reading += analogRead(BATT_CURRENT_PIN);
+    }
+    reading = reading / 4;
+
+    // Get divided current
+    // Reference is 5V, +/- 20A
+    // I = (((5 * V) - (2.5 * 1023)) / 1023) * (20 / 2)
+    // Sending in units of 1/1023 as with voltage:
+    int16_t current = ((reading * 5) - 2557) * 10;
+
+    // At present we don't care about the direction
+    if (current < 0) current = -current;
+
+    return (uint16_t)current;
 }
