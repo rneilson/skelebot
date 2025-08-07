@@ -138,7 +138,16 @@ pub struct BatteryVoltage(pub u16);
 
 impl BatteryVoltage {
     pub fn as_float(&self) -> f32 {
-        f32::from(self.0) / 1024.0
+        f32::from(self.0) / 1023.0
+    }
+}
+
+#[derive(Debug)]
+pub struct BatteryCurrent(pub u16);
+
+impl BatteryCurrent {
+    pub fn as_float(&self) -> f32 {
+        f32::from(self.0) / 1023.0
     }
 }
 
@@ -149,7 +158,8 @@ pub enum Action {
     Fatal(ThreadMsg),
     KeyPress(KeyEvent),
     StickUpdate(StickValues),
-    BatteryUpdate(BatteryVoltage),
+    BatteryVoltageUpdate(BatteryVoltage),
+    BatteryCurrentUpdate(BatteryCurrent),
 }
 
 pub fn record_ticks_for_period(

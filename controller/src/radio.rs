@@ -7,8 +7,8 @@ use std::time::{Duration, Instant};
 use crazyradio::{self, Channel, Crazyradio, Datarate};
 
 use crate::actions::{
-    record_ticks_for_period, send_error_message, send_message, Action, BatteryVoltage,
-    ControlState, RECORD_TICKS_INTERVAL,
+    record_ticks_for_period, send_error_message, send_message, Action, BatteryCurrent,
+    BatteryVoltage, ControlState, RECORD_TICKS_INTERVAL,
 };
 
 enum SendStateType {
@@ -181,19 +181,26 @@ fn receive_ack_data(tx: &Sender<Action>, ack_data: [u8; 4]) {
         // Battery voltage, 2 bytes
         0xFB => {
             let voltage = BatteryVoltage(u16::from_be_bytes([ack_data[1], ack_data[2]]));
-            if let Err(_) = tx.send(Action::BatteryUpdate(voltage)) {
+            if let Err(_) = tx.send(Action::BatteryVoltageUpdate(voltage)) {
+                // Can happen during shutdown
+            }
+        }
+        // Battery current, 2 bytes
+        0xFC => {
+            let current = BatteryCurrent(u16::from_be_bytes([ack_data[1], ack_data[2]]));
+            if let Err(_) = tx.send(Action::BatteryCurrentUpdate(current)) {
                 // Can happen during shutdown
             }
         }
         // Left RPM, 2 bytes
-        0xFC => {
-            // TODO
-        }
-        // Right RPM, 2 bytes
         0xFD => {
             // TODO
         }
-        // 0xFE, 0xFF reserved
+        // Right RPM, 2 bytes
+        0xFE => {
+            // TODO
+        }
+        // 0xFF reserved
         _ => {
             // Send error message?
         }

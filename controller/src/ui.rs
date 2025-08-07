@@ -14,15 +14,16 @@ use ratatui::widgets::{
 };
 
 use crate::actions::{
-    record_ticks_for_period, Action, BatteryVoltage, ControlSpeed, ControlState, ThreadMsg,
-    RECORD_TICKS_INTERVAL,
+    record_ticks_for_period, Action, BatteryCurrent, BatteryVoltage, ControlSpeed, ControlState,
+    ThreadMsg, RECORD_TICKS_INTERVAL,
 };
 
 const MESSAGE_LINES: u16 = 5;
 
 pub enum UIUpdate {
     Control(ControlState),
-    Battery(BatteryVoltage),
+    BatteryVoltage(BatteryVoltage),
+    BatteryCurrent(BatteryCurrent),
     Message(ThreadMsg),
     Error(ThreadMsg),
 }
@@ -30,6 +31,7 @@ pub enum UIUpdate {
 struct UIState {
     control_state: ControlState,
     battery_voltage: BatteryVoltage,
+    battery_current: BatteryCurrent,
     messages: VecDeque<String>,
 }
 
@@ -38,6 +40,7 @@ impl UIState {
         Self {
             control_state: ControlState::new(),
             battery_voltage: BatteryVoltage(0),
+            battery_current: BatteryCurrent(0),
             messages: vec![].into(),
         }
     }
@@ -87,8 +90,11 @@ pub fn draw_ui(rx: Receiver<UIUpdate>, tx: Sender<Action>, exit_flag: &AtomicBoo
                     UIUpdate::Control(new_state) => {
                         ui_state.control_state = new_state;
                     }
-                    UIUpdate::Battery(new_voltage) => {
+                    UIUpdate::BatteryVoltage(new_voltage) => {
                         ui_state.battery_voltage = new_voltage;
+                    }
+                    UIUpdate::BatteryCurrent(new_current) => {
+                        ui_state.battery_current = new_current;
                     }
                     UIUpdate::Message(msg) => {
                         ui_state
@@ -151,6 +157,7 @@ fn render_ui(frame: &mut Frame, ui_state: &UIState) {
     let move_speed = ui_state.control_state.move_speed;
     let (pan_val, tilt_val) = ui_state.control_state.as_camera_angles();
     let voltage = ui_state.battery_voltage.as_float();
+    let current = ui_state.battery_current.as_float();
 
     let outer_layout = Layout::default()
         .direction(Direction::Vertical)
@@ -204,7 +211,9 @@ fn render_ui(frame: &mut Frame, ui_state: &UIState) {
         Line::from(""),
         Line::from("Battery"),
         // TODO: style
-        Line::from(format!("Main: {:.2}V", voltage)),
+        // TODO: figure out how to stop Ratatui from eating the leading spaces
+        Line::raw(format!("{:>10}", format!("  {:.2}V", voltage))),
+        Line::raw(format!("{:>10}", format!("  {:.2}A", current))),
         // TODO: left RPM
         // TODO: right RPM
     ];

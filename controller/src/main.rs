@@ -193,8 +193,11 @@ fn handle_actions(
                         ui_tx.send(UIUpdate::Control(control_state))?;
                         // write!(io::stdout(), "Control state: {:?}\r\n", control_state)?;
                     }
-                    Action::BatteryUpdate(voltage) => {
-                        ui_tx.send(UIUpdate::Battery(voltage))?;
+                    Action::BatteryVoltageUpdate(voltage) => {
+                        ui_tx.send(UIUpdate::BatteryVoltage(voltage))?;
+                    }
+                    Action::BatteryCurrentUpdate(current) => {
+                        ui_tx.send(UIUpdate::BatteryCurrent(current))?;
                     }
                 }
             }
