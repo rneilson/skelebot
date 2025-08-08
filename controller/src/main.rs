@@ -6,7 +6,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use crossterm::event::{KeyCode, KeyEvent};
 use crossterm::terminal;
@@ -276,6 +276,8 @@ fn handle_stick_positions(
     buttons: &mut ToggleButtons,
     stick_pos: StickValues,
 ) -> ControlState {
+    let curr_time = Instant::now();
+
     // Convert stick position to control state
     // At present this is a simple mapping of Y axis to throttle
     // and X axis to steering, except the movement speed toggle
@@ -286,14 +288,25 @@ fn handle_stick_positions(
         move_speed = move_speed.toggle();
     }
     buttons.r#move = move_pos.button;
+
+    // Reset pan/tilt when button pressed
+    // TODO: figure out the &mut required to still apply the stick postion after
+    // recentering, in the same frame (instead of waiting until the next)
+    let (new_pan, new_tilt) = if view_pos.button && !buttons.view {
+        (0.0, 0.0)
+    } else {
+        prev_state.get_rotated_camera(view_pos.x, view_pos.y, curr_time)
+    };
     buttons.view = view_pos.button;
 
+    // TODO: make all this an impl fn on ControlState instead?
     let control_state = ControlState {
         throttle: move_pos.y,
         steering: move_pos.x,
-        pan: view_pos.x,
-        tilt: view_pos.y,
+        pan: new_pan,
+        tilt: new_tilt,
         move_speed: move_speed,
+        last_update: curr_time,
     };
     control_state.trim()
 }

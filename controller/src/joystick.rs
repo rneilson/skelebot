@@ -12,8 +12,9 @@ use crate::actions::{
     RECORD_TICKS_INTERVAL,
 };
 
-const MAX_WAIT: Duration = Duration::from_millis(100);
-const DEAD_ZONE: i32 = (i16::MAX as i32) / 10;
+const FIND_WAIT: Duration = Duration::from_millis(100);
+const POLL_WAIT: Duration = Duration::from_millis(10);
+const DEAD_ZONE: i32 = (i16::MAX as i32) / 5;
 
 pub fn collect_joystick_events(tx: Sender<Action>, exit_flag: &AtomicBool) {
     let mut prev_marker = Instant::now();
@@ -75,7 +76,7 @@ pub fn collect_joystick_events(tx: Sender<Action>, exit_flag: &AtomicBool) {
             }
             None => {
                 // Sleep for a while, and we'll look for another joystick
-                sleep(MAX_WAIT);
+                sleep(FIND_WAIT);
             }
         };
 
@@ -143,7 +144,7 @@ impl StickDevice {
 
     pub fn update_position(&mut self) -> Result<StickValues, io::Error> {
         let mut events = [EpollEvent::empty(); 2];
-        let max_wait = EpollTimeout::try_from(MAX_WAIT).unwrap();
+        let max_wait = EpollTimeout::try_from(POLL_WAIT).unwrap();
         self.epoll.wait(&mut events, max_wait)?;
 
         match self.device.fetch_events() {

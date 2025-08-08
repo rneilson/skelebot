@@ -7,6 +7,10 @@ use std::time::{Duration, Instant};
 use crossterm::event::KeyEvent;
 
 pub const RECORD_TICKS_INTERVAL: Duration = Duration::from_secs(2);
+pub const PAN_TILT_MAX: f64 = i16::MAX as f64;
+pub const PAN_TILT_MIN: f64 = (i16::MIN + 1) as f64;
+// 180° in 450ms, so 0.4 °/ms
+const CAMERA_DEG_MS: f64 = 0.4;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum ControlSpeed {
@@ -36,9 +40,10 @@ impl ToString for ControlSpeed {
 pub struct ControlState {
     pub throttle: i16,
     pub steering: i16,
-    pub pan: i16,
-    pub tilt: i16,
+    pub pan: f32,
+    pub tilt: f32,
     pub move_speed: ControlSpeed,
+    pub last_update: Instant,
 }
 
 impl ControlState {
@@ -46,9 +51,10 @@ impl ControlState {
         Self {
             throttle: 0,
             steering: 0,
-            pan: 0,
-            tilt: 0,
+            pan: 0.0,
+            tilt: 0.0,
             move_speed: ControlSpeed::Slow,
+            last_update: Instant::now(),
         }
     }
 
@@ -59,12 +65,8 @@ impl ControlState {
         if self.steering == i16::MIN {
             self.steering += 1;
         }
-        if self.pan == i16::MIN {
-            self.pan += 1;
-        }
-        if self.tilt == i16::MIN {
-            self.tilt += 1;
-        }
+        self.pan = self.pan.clamp(PAN_TILT_MIN as f32, PAN_TILT_MAX as f32);
+        self.tilt = self.tilt.clamp(PAN_TILT_MIN as f32, PAN_TILT_MAX as f32);
         self
     }
 
@@ -107,11 +109,32 @@ impl ControlState {
 
     // Convert pan and tilt values to angular values in +/- degrees (max 90°)
     pub fn as_camera_angles(&self) -> (i8, i8) {
-        let pan = (self.pan as f64) / (i16::MAX as f64);
-        let tilt = (self.tilt as f64) / (i16::MAX as f64);
+        let pan = (self.pan as f64) / PAN_TILT_MAX;
+        let tilt = (self.tilt as f64) / PAN_TILT_MAX;
 
         let pan = (90.0 * pan).clamp(-90.0, 90.0) as i8;
         let tilt = (90.0 * tilt).clamp(-90.0, 90.0) as i8;
+
+        (pan, tilt)
+    }
+
+    // Get new pan and tilt values given view x/y positions and last update time
+    pub fn get_rotated_camera(&self, view_x: i16, view_y: i16, curr_time: Instant) -> (f32, f32) {
+        let ms_since = curr_time
+            .checked_duration_since(self.last_update)
+            .unwrap()
+            .as_millis();
+        // Go ahead and truncate, we're not overflowing 4 megaseconds
+        let ms_since = ms_since as u32;
+        // X/Y movement as a fraction of the max movement rate
+        // Since it's already on the interval (-32767, 32767), we just need to
+        // get the proportional delta
+        let delta_frac = (ms_since as f64) * CAMERA_DEG_MS / 90.0;
+        let x_delta = (view_x as f64) * delta_frac;
+        let y_delta = (view_y as f64) * delta_frac;
+
+        let pan = ((self.pan as f64) + x_delta).clamp(PAN_TILT_MIN, PAN_TILT_MAX) as f32;
+        let tilt = ((self.tilt as f64) + y_delta).clamp(PAN_TILT_MIN, PAN_TILT_MAX) as f32;
 
         (pan, tilt)
     }
