@@ -14,7 +14,7 @@ use crate::actions::{
 
 const FIND_WAIT: Duration = Duration::from_millis(100);
 const POLL_WAIT: Duration = Duration::from_millis(10);
-const DEAD_ZONE: i32 = (i16::MAX as i32) / 5;
+const DEAD_ZONE: i32 = (i16::MAX as i32) / 32;
 
 pub fn collect_joystick_events(tx: Sender<Action>, exit_flag: &AtomicBool) {
     let mut prev_marker = Instant::now();
