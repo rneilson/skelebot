@@ -9,8 +9,8 @@ use crossterm::event::KeyEvent;
 pub const RECORD_TICKS_INTERVAL: Duration = Duration::from_secs(2);
 pub const PAN_TILT_MAX: f64 = i16::MAX as f64;
 pub const PAN_TILT_MIN: f64 = (i16::MIN + 1) as f64;
-// 180° in 450ms, so 0.4 °/ms
-const CAMERA_DEG_MS: f64 = 0.4;
+// 180° in 300ms, so 0.6 °/ms
+const CAMERA_DEG_MS: f64 = 0.6;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum ControlSpeed {
