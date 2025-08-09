@@ -65,6 +65,7 @@ void setup() {
 
     // Setup I2C for servo control
     Wire.begin();
+    Wire.setClock(400000);
     writeI2CRegisterWord(SERVO_PWM_FREQ_REG, SERVO_PWM_FREQ_VAL);
     writeI2CRegisterWord(SERVO_PAN_PWM_REG, SERVO_PAN_MID);
     writeI2CRegisterWord(SERVO_TILT_PWM_REG, SERVO_TILT_MID);
