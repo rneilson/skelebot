@@ -31,7 +31,7 @@ AckType next_ack_type = AckType::BATT_VOLTAGE;
 
 #define BATT_VOLTAGE_PIN A6
 #define BATT_CURRENT_PIN A2
-// #define VTX_EN_PIN 2
+#define VTX_EN_PIN 2
 
 // Servo values
 #define SERVO_I2C_ADDR 0x24
@@ -59,9 +59,9 @@ void setup() {
     pinMode(BATT_VOLTAGE_PIN, INPUT);
     pinMode(BATT_CURRENT_PIN, INPUT);
 
-    // TODO: set aux pin low to start
-    // pinMode(VTX_EN_PIN, OUTPUT);
-    // digitalWrite(VTX_EN_PIN, LOW);
+    // Set VTX pin low to start
+    pinMode(VTX_EN_PIN, OUTPUT);
+    digitalWrite(VTX_EN_PIN, LOW);
 
     // Setup I2C for servo control
     Wire.begin();
@@ -108,8 +108,8 @@ void setup() {
     // Put radio in RX mode
     radio.startListening();
 
-    // TODO: now enable aux
-    // digitalWrite(AUX_EN_PIN, HIGH);
+    // Now enable VTX
+    digitalWrite(VTX_EN_PIN, HIGH);
 }
 
 void loop() {
