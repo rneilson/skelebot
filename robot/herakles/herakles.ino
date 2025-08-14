@@ -1,6 +1,9 @@
+// #define ENABLE_DEBUG_OUTPUT
+
 #include <motordriver_4wd.h>
 #include <RF24.h>
 #include <Wire.h>
+#include <Adafruit_PWMServoDriver.h>
 #include <Arduino.h>
 
 #define CE_PIN A0
@@ -34,24 +37,27 @@ AckType next_ack_type = AckType::BATT_VOLTAGE;
 #define VTX_EN_PIN 2
 
 // Servo values
-#define SERVO_I2C_ADDR 0x24
-#define SERVO_PWM_FREQ_REG 0x60
+#define SERVO_I2C_ADDR 0x40
 #define SERVO_PWM_FREQ_VAL 50   // 50 Hz
-#define SERVO_PAN_PIN_REG 0x02
-#define SERVO_TILT_PIN_REG 0x03
-#define SERVO_PIN_PWM_MODE 0x20
-#define SERVO_PAN_PWM_REG 0x52
-#define SERVO_TILT_PWM_REG 0x54
-#define SERVO_PAN_MIN 102   // 0°
-#define SERVO_PAN_MID 310   // 90°
-#define SERVO_PAN_MAX 516   // 180°
+#define SERVO_PAN_PIN 0
+#define SERVO_PAN_MIN 71   // 0°
+#define SERVO_PAN_MID 305   // 90°
+#define SERVO_PAN_MAX 542   // 180°
+#define SERVO_TILT_PIN 1
 // #define SERVO_TILT_MIN 87    // 0°
-#define SERVO_TILT_MIN 195   // 45°
-#define SERVO_TILT_MID 305   // 90°
+#define SERVO_TILT_MIN 190   // 45°
+#define SERVO_TILT_MID 300   // 90°
 #define SERVO_TILT_MAX 394   // 135°
 // #define SERVO_TILT_MAX 499   // 180°
 
+Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver(SERVO_I2C_ADDR);
+
 void setup() {
+    #ifdef ENABLE_DEBUG_OUTPUT
+    Serial.begin(9600);
+    Serial.println("Beginning startup");
+    #endif
+
     MOTOR.init();
 
     // Set battery pins as input and use external voltage ref
@@ -66,13 +72,28 @@ void setup() {
     // Setup I2C for servo control
     Wire.begin();
     Wire.setClock(400000);
-    writeI2CRegisterWord(SERVO_PWM_FREQ_REG, SERVO_PWM_FREQ_VAL);
-    writeI2CRegisterWord(SERVO_PAN_PWM_REG, SERVO_PAN_MID);
-    writeI2CRegisterWord(SERVO_TILT_PWM_REG, SERVO_TILT_MID);
-    writeI2CRegisterByte(SERVO_PAN_PIN_REG, SERVO_PIN_PWM_MODE);
-    writeI2CRegisterByte(SERVO_TILT_PIN_REG, SERVO_PIN_PWM_MODE);
+
+    // Setup servo controller
+    if (!pwm.begin()) {
+        #ifdef ENABLE_DEBUG_OUTPUT
+        Serial.println("Error initializing servo controller");
+        #endif
+        while (1) {}
+    }
+
+    // As per https://github.com/adafruit/Adafruit-PWM-Servo-Driver-Library/blob/master/examples/servo/servo.ino
+    // we *should* be checking this with an oscilliscope and all that...
+    // pwm.setOscillatorFrequency(27000000);
+    pwm.setPWMFreq(SERVO_PWM_FREQ_VAL);
+    delay(10);
 
     // Initial servo wakeup stretching
+    if (!setCameraPanAngle(90) || !setCameraTiltAngle(90)) {
+        #ifdef ENABLE_DEBUG_OUTPUT
+        Serial.println("Error setting initial camera angles");
+        #endif
+        while (1) {}
+    }
     delay(400);
     setCameraPanAngle(0);
     delay(400);
@@ -108,8 +129,12 @@ void setup() {
     // Put radio in RX mode
     radio.startListening();
 
-    // Now enable VTX
-    digitalWrite(VTX_EN_PIN, HIGH);
+    // Now enable VTX but only on battery
+    // Under 6V and we can assume we're on external power (at least the kind
+    // which doesn't necessarily want the extra draw)
+    if (getBatteryVoltage() > (6 * 1023)) {
+        digitalWrite(VTX_EN_PIN, HIGH);
+    }
 }
 
 void loop() {
@@ -235,25 +260,11 @@ void loop() {
     // TODO: write ack payload(s) and drain queue if successful
 }
 
-bool writeI2CRegisterByte(uint8_t reg, uint8_t value) {
-    Wire.beginTransmission(SERVO_I2C_ADDR);
-    Wire.write(reg);
-    Wire.write(value);
-    return Wire.endTransmission() == 0;
-}
-
-bool writeI2CRegisterWord(uint8_t reg, uint16_t value) {
-    Wire.beginTransmission(SERVO_I2C_ADDR);
-    Wire.write(reg);
-    Wire.write((uint8_t *)&value, sizeof(value));
-    return Wire.endTransmission() == 0;
-}
-
 uint16_t mapCameraAngle(uint16_t angle, uint16_t in_min, uint16_t in_max, uint16_t out_min, uint16_t out_max) {
     return (angle - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
 }
 
-bool setCameraAngle(uint8_t reg, uint8_t angle, uint16_t min, uint16_t mid, uint16_t max) {
+bool setCameraAngle(uint8_t pin, uint8_t angle, uint16_t min, uint16_t mid, uint16_t max) {
     uint16_t value;
 
     if (angle > 180) {
@@ -277,15 +288,16 @@ bool setCameraAngle(uint8_t reg, uint8_t angle, uint16_t min, uint16_t mid, uint
     }
 
     // Now write the change
-    return writeI2CRegisterWord(reg, value);
+    // setPWM() returns 0 if successful, otherwise 1
+    return !pwm.setPWM(pin, 0, value);
 }
 
 bool setCameraPanAngle(uint8_t angle) {
-    return setCameraAngle(SERVO_PAN_PWM_REG, angle, SERVO_PAN_MIN, SERVO_PAN_MID, SERVO_PAN_MAX);
+    return setCameraAngle(SERVO_PAN_PIN, angle, SERVO_PAN_MIN, SERVO_PAN_MID, SERVO_PAN_MAX);
 }
 
 bool setCameraTiltAngle(uint8_t angle) {
-    return setCameraAngle(SERVO_TILT_PWM_REG, angle, SERVO_TILT_MIN, SERVO_TILT_MID, SERVO_TILT_MAX);
+    return setCameraAngle(SERVO_TILT_PIN, angle, SERVO_TILT_MIN, SERVO_TILT_MID, SERVO_TILT_MAX);
 }
 
 uint8_t motorSpeedCeiling(uint8_t value) {
