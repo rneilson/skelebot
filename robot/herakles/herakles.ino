@@ -40,9 +40,9 @@ AckType next_ack_type = AckType::BATT_VOLTAGE;
 #define SERVO_I2C_ADDR 0x40
 #define SERVO_PWM_FREQ_VAL 50   // 50 Hz
 #define SERVO_PAN_PIN 0
-#define SERVO_PAN_MIN 71   // 0°
-#define SERVO_PAN_MID 305   // 90°
-#define SERVO_PAN_MAX 542   // 180°
+#define SERVO_PAN_MIN 65   // 0°
+#define SERVO_PAN_MID 306   // 90°
+#define SERVO_PAN_MAX 548   // 180°
 #define SERVO_TILT_PIN 1
 // #define SERVO_TILT_MIN 87    // 0°
 #define SERVO_TILT_MIN 190   // 45°
@@ -117,8 +117,8 @@ void setup() {
         while (1) {}
     }
     // Set PA level high for use
-    // TODO: figure out if/when to set to max
-    radio.setPALevel(RF24_PA_HIGH);
+    // TODO: figure out if/when to set to less than max
+    radio.setPALevel(RF24_PA_MAX);
     radio.setDataRate(RF24_250KBPS);
     // Enable dynamic payloads and payload acks
     radio.enableDynamicPayloads();
@@ -185,10 +185,11 @@ void loop() {
                 break;
             case 0xF5:
                 // Center camera
+                // TODO: remove and let controller re-center
                 setCameraPanAngle(90);
                 setCameraTiltAngle(90);
                 break;
-                case 0xF6:
+            case 0xF6:
                 // Look (pan, tilt)
                 setCameraPanAngle(command[1]);
                 setCameraTiltAngle(command[2]);
@@ -211,7 +212,7 @@ void loop() {
     if (current_tick - last_cmd >= CONN_LOSS_MS) {
         MOTOR.setStop1();
         MOTOR.setStop2();
-        // This will
+        // This will reset our conn loss check period
         last_cmd = current_tick;
     }
 
@@ -242,7 +243,11 @@ void loop() {
         ack[1] = ack_bytes[1];
         ack[2] = ack_bytes[0];
         // TODO: queue up ack payloads
-        radio.writeAckPayload(0, ack, 3);
+        if (!radio.writeAckPayload(0, ack, 3)) {
+            // Flush previous ack payloads and retry
+            radio.flush_tx();
+            radio.writeAckPayload(0, ack, 3);
+        }
 
         // Set next ack payload type
         switch (next_ack_type) {
