@@ -1,0 +1,18 @@
+/**
+ * Execute `armbian-add-overlay i2c8-changes.dts` to
+ * automatically compile and add to /boot/armbianEnv.txt
+ */
+
+/dts-v1/;
+/plugin/;
+
+/ {
+  compatible = "rockchip,rk3399";
+
+  fragment@0 {
+    target-path = "/i2c@ff3e0000";  // Bus i2c8
+    __overlay__ {
+      clock-frequency = <400000>;  // 400 Kbps
+    };
+  };
+};
