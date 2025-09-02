@@ -12,7 +12,13 @@
   fragment@0 {
     target-path = "/i2c@ff3e0000";  // Bus i2c8
     __overlay__ {
-      clock-frequency = <400000>;  // 400 Kbps
+      // clock-frequency = <400000>;  // 400 Kbps
+
+      ina219@40 {
+        compatible = "ti,ina219";
+        reg = <0x40>;
+        shunt-resistor = <100000>;  // 100,000 uOhm, 0.1 Ohm
+      };
     };
   };
 };
