@@ -114,20 +114,10 @@ void setup() {
 
     // Radio init
     if (!radio.begin()) {
+        // TODO: blink led or something
         while (1) {}
     }
-    // Set PA level high for use
-    // TODO: figure out if/when to set to less than max
-    radio.setPALevel(RF24_PA_MAX);
-    radio.setDataRate(RF24_250KBPS);
-    // Enable dynamic payloads and payload acks
-    radio.enableDynamicPayloads();
-    radio.enableAckPayload();
-    // Set channel and address, reading from crazyradio tx
-    radio.openReadingPipe(0, control_addr);
-    radio.setChannel(channel);
-    // Put radio in RX mode
-    radio.startListening();
+    startRadio();
 
     // Now enable VTX but only on battery
     // Under 6V and we can assume we're on external power (at least the kind
@@ -214,6 +204,15 @@ void loop() {
         MOTOR.setStop2();
         // This will reset our conn loss check period
         last_cmd = current_tick;
+        // Flush pending acks because they may no longer refer to valid packets
+        radio.flush_tx();
+        // If the radio has failed in some way, it may require restart
+        if (radio.failureDetected) {
+            if (!restartRadio()) {
+                // TODO: blink LED or something
+                while (1) {}
+            }
+        }
     }
 
     if (current_tick - last_ack >= ACK_PAYLOAD_MS) {
@@ -263,6 +262,32 @@ void loop() {
     }
 
     // TODO: write ack payload(s) and drain queue if successful
+}
+
+void startRadio() {
+    // TODO: figure out if/when to set to less than max
+    radio.setPALevel(RF24_PA_MAX);
+    radio.setDataRate(RF24_250KBPS);
+    // Enable dynamic payloads and payload acks
+    radio.enableDynamicPayloads();
+    radio.enableAckPayload();
+    // Set channel and address, reading from crazyradio tx
+    radio.openReadingPipe(0, control_addr);
+    radio.setChannel(channel);
+    // Put radio in RX mode
+    radio.startListening();
+}
+
+bool restartRadio() {
+    // As the prophets teach, off and on again
+    radio.powerDown();
+    radio.powerUp();
+    if (!radio.begin()) {
+        return false;
+    }
+    radio.failureDetected = 0;
+    startRadio();
+    return true;
 }
 
 uint16_t mapCameraAngle(uint16_t angle, uint16_t in_min, uint16_t in_max, uint16_t out_min, uint16_t out_max) {

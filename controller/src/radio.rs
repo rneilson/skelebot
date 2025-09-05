@@ -17,6 +17,7 @@ enum SendStateType {
 }
 
 const RADIO_LOOP_INTERVAL: Duration = Duration::from_millis(10);
+const MAX_ACK_PAYLOAD: u8 = 4;
 
 pub fn radio_comms(
     tx: Sender<Action>,
@@ -101,6 +102,9 @@ fn init_crazyradio(channel: u8) -> Result<Crazyradio, crazyradio::Error> {
     let mut cr = Crazyradio::open_first()?;
     cr.set_datarate(Datarate::Dr250K)?;
     cr.set_channel(channel)?;
+    cr.set_ard_time(Duration::from_millis(250))?; // This is the smallest per the source
+    cr.set_ard_bytes(MAX_ACK_PAYLOAD)?;
+    cr.set_arc(1)?; // Only retry once, we'd rather just move to the next command
     Ok(cr)
 }
 
@@ -166,9 +170,12 @@ fn send_state_update(
     }
 
     let cmd_slice = &command[..command_len];
-    let mut ack_data: [u8; 4] = [0; 4];
+    let mut ack_data: [u8; MAX_ACK_PAYLOAD as usize] = [0; MAX_ACK_PAYLOAD as usize];
     let _ack = cr.send_packet(cmd_slice, &mut ack_data)?;
     // TODO: check ack properties
+    // _ack.received
+    // _ack.power_detector
+    // _ack.retry
 
     Ok(ack_data)
 }
